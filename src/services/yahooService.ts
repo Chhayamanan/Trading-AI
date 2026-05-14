@@ -6,7 +6,7 @@ export class YahooService {
   static async getHistoricalData(symbol: string, excludeToday = false) {
     const ticker = (symbol.includes(".") || symbol.startsWith("^")) ? symbol : `${symbol}.NS`;
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 90); 
+    startDate.setDate(startDate.getDate() - 150); 
     const today = new Date();
     
     // If excluding today, set end date to yesterday 23:59:59
