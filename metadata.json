@@ -1,0 +1,6 @@
+{
+  "name": "Institutional Trading AI",
+  "description": "Multi-agent trading system with Darvas Box strategy and automated reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
