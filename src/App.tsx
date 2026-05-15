@@ -35,7 +35,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'darvas' | 'rsTrend' | 'custom'>('darvas');
   const [activeScan, setActiveScan] = useState<'all' | null>(null);
   const [isMonitoring, setIsMonitoring] = useState(false);
-  const [backtestResults, setBacktestResults] = useState<any[] | null>(null);
   const [liveMetrics, setLiveMetrics] = useState<Record<string, { price: number, volume: number, ratio: number, dailyChange: number, distFromHigh: number }>>({});
   const [maxDistFromHigh, setMaxDistFromHigh] = useState<number>(20); // 20% by default
   const [dailyChangeMin, setDailyChangeMin] = useState<number>(-10);
@@ -167,11 +166,22 @@ export default function App() {
               if (data.signals && data.signals.length > 0) {
                 setResults((prev: any) => {
                   if (!prev) return prev;
+                  const newExecutedTrades = data.executedTrades || [];
+                  const existingTrades = prev.darvas?.executedTrades || [];
+                  const combinedTrades = [...existingTrades];
+
+                  newExecutedTrades.forEach((newT: any) => {
+                    if (!combinedTrades.some(t => t.symbol === newT.symbol)) {
+                      combinedTrades.push(newT);
+                    }
+                  });
+
                   return {
                     ...prev,
                     darvas: {
                       ...prev.darvas,
-                      signals: data.signals
+                      signals: data.signals,
+                      executedTrades: combinedTrades
                     }
                   };
                 });
@@ -243,29 +253,6 @@ export default function App() {
     } finally {
       setIsRunning(false);
     }
-  };
-
-  const exportTradeLogs = () => {
-    if (!backtestResults) return;
-    
-    let csvRows = ["Symbol,Date,Type,EntryPrice,ExitPrice,ExitTime,Status,PnL%"];
-    backtestResults.forEach(r => {
-      r.trades.forEach((t: any) => {
-        csvRows.push(`${r.symbol},${t.entryTime},${t.type},${t.entryPrice},${t.exitPrice},${t.exitTime},${t.status},${t.pnl}%`);
-      });
-    });
-
-    const filename = `backtest_tradelog_${new Date().toISOString().split('T')[0]}.csv`;
-    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", filename);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    addLog("Trading logs exported to CSV.");
   };
 
   const runSync = async () => {
@@ -542,7 +529,7 @@ export default function App() {
           {/* Right Column: Results */}
           <div className="lg:col-span-7">
             <AnimatePresence mode="wait">
-              {(!results && !backtestResults) ? (
+              {!results ? (
                 <motion.div 
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}

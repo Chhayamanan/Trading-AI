@@ -15,11 +15,13 @@ export class YahooService {
 
     let result;
     try {
-      result = await yahooFinance.historical(ticker, {
+      // @ts-ignore
+      const chartData = await yahooFinance.chart(ticker, {
         period1: startDate,
         period2: endDate,
         interval: "1d"
       });
+      result = chartData.quotes || [];
     } catch (e: any) {
       console.warn(`[YAHOO] NSE fetch failed for ${ticker}: ${e.message}`);
     }
@@ -28,11 +30,13 @@ export class YahooService {
       if (!symbol.includes(".") && !symbol.startsWith("^")) {
         const bseTicker = `${symbol}.BO`;
         try {
-          result = await yahooFinance.historical(bseTicker, {
+          // @ts-ignore
+          const chartData = await yahooFinance.chart(bseTicker, {
             period1: startDate,
             period2: endDate,
             interval: "1d"
           });
+          result = chartData.quotes || [];
         } catch (e: any) {
           console.error(`[YAHOO] BSE fetch failed for ${bseTicker}: ${e.message}`);
         }

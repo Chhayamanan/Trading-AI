@@ -69,8 +69,10 @@ async function startServer() {
         const reviewed = await GroupLeader.review(authenticated);
         if (!reviewed.approved) continue;
         const trade = await DarvasExecuter.execute(reviewed.signal.symbol, reviewed.signal.entry);
-        CEOEA.reportTrade(trade);
-        darvasTrades.push(trade);
+        if (trade) {
+          CEOEA.reportTrade(trade);
+          darvasTrades.push(trade);
+        }
       }
       
       const rsTrendCandidates = await DarvasScanner.scan(RAW_UNIVERSE, { rsTrendOnly: true });
@@ -127,8 +129,10 @@ async function startServer() {
         );
 
         // STEP 6: CEO EA REPORTING
-        CEOEA.reportTrade(trade);
-        executedTrades.push(trade);
+        if (trade) {
+          CEOEA.reportTrade(trade);
+          executedTrades.push(trade);
+        }
       }
 
       res.json({
@@ -239,7 +243,20 @@ async function startServer() {
     try {
       const { candidates, multiplier } = req.body;
       const result = await DarvasValidator.validate(candidates, multiplier);
-      res.json({ success: true, ...result });
+      
+      const executedTrades = [];
+      for (const signal of result.signals) {
+        const authenticated = await DarvasAuthenticator.authenticate(signal);
+        const reviewed = await GroupLeader.review(authenticated);
+        if (!reviewed.approved) continue;
+        const trade = await DarvasExecuter.execute(reviewed.signal.symbol, reviewed.signal.entry);
+        if (trade) {
+          CEOEA.reportTrade(trade);
+          executedTrades.push(trade);
+        }
+      }
+
+      res.json({ success: true, ...result, executedTrades });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
     }

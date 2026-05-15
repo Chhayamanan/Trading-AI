@@ -37,7 +37,7 @@ export class DarvasValidator {
         liveMetrics[stock.symbol] = { price: currentPrice, volume: currentVolume, ratio, dailyChange, distFromHigh };
 
         const volumeCondition = ratio >= multiplier;
-        const breakoutCondition = currentPrice >= stock.boxHigh * 0.98;
+        const breakoutCondition = currentPrice >= stock.boxHigh;
 
         if (volumeCondition && breakoutCondition) {
           signals.push({

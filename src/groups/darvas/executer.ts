@@ -2,7 +2,7 @@ import { BrokerService } from "../../services/brokerService";
 
 export class DarvasExecuter {
   static async execute(symbol: string, entry: number) {
-    const quantity = 10;
+    const quantity = 1;
     return await BrokerService.executeBuy(symbol, entry, quantity);
   }
 }

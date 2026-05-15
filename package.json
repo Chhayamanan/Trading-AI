@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "update-tokens": "tsx src/data/updateTokens.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -21,6 +22,7 @@
     "motion": "^12.23.24",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "totp-generator": "^2.0.1",
     "vite": "^6.2.3",
     "yahoo-finance2": "^3.14.0"
   },
