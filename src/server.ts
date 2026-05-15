@@ -1,3 +1,4 @@
+import cors from "cors";k
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -16,6 +17,7 @@ import { BacktestScanner } from "./groups/backtest/scanner";
 
 async function startServer() {
   const app = express();
+  app.use(cors());
   const PORT = process.env.PORT || 3000;
 
   app.use(express.json());
