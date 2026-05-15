@@ -371,7 +371,12 @@ export default function App() {
     setIsSyncing(true);
     addLog("Data Keeper Agent: Starting market synchronization...");
     try {
-      const response = await fetch('/api/data-keeper/sync', { method: 'POST' });
+      const response = await fetch(
+  `${import.meta.env.VITE_API_URL}/api/data-keeper/sync`,
+  {
+    method: 'POST'
+  }
+);
       
       if (!response.ok) {
         const text = await response.text();
