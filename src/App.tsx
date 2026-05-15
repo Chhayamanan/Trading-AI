@@ -32,7 +32,8 @@ export default function App() {
   const [volumeFilter, setVolumeFilter] = useState<number>(0);
   const [volMultiplier, setVolMultiplier] = useState<number>(4);
   const [spikeFactor, setSpikeFactor] = useState<number>(3);
-  const [activeScan, setActiveScan] = useState<'darvas' | 'rsTrend' | 'custom' | 'volumeSpike' | 'backtest' | null>(null);
+  const [activeTab, setActiveTab] = useState<'darvas' | 'rsTrend' | 'custom'>('darvas');
+  const [activeScan, setActiveScan] = useState<'all' | null>(null);
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [backtestResults, setBacktestResults] = useState<any[] | null>(null);
   const [liveMetrics, setLiveMetrics] = useState<Record<string, { price: number, volume: number, ratio: number, dailyChange: number, distFromHigh: number }>>({});
@@ -49,28 +50,18 @@ export default function App() {
     let data: any[] = [];
     let filename = `scan_results_${new Date().toISOString().split('T')[0]}.csv`;
 
-    if (activeScan === 'volumeSpike' && results.spikes) {
-      data = results.spikes.map((s: any) => ({
-        Symbol: s.symbol,
-        Time: s.time,
-        CurrentPrice: s.currentPrice,
-        SpikeVolume: s.spikeVolume,
-        AvgVolume5m: s.avgVolume5m.toFixed(0),
-        Factor: s.ratio.toFixed(2),
-        PriceChange: s.priceChangePercent.toFixed(2) + '%',
-        DayHigh: s.todayHigh,
-        DayLow: s.todayLow
-      }));
-    } else if (results.candidates) {
-      data = results.candidates.map((c: any) => ({
+    const activeResults = activeTab === 'darvas' ? results.darvas : activeTab === 'rsTrend' ? results.rsTrend : results.custom;
+    
+    if (activeResults?.candidates) {
+      data = activeResults.candidates.map((c: any) => ({
         Symbol: c.symbol,
-        Price: c.currentPrice,
-        Volume: c.currentVolume,
-        VolRatio: c.volumeRatio.toFixed(2),
+        Price: liveMetrics[c.symbol]?.price || c.currentPrice,
+        Volume: liveMetrics[c.symbol]?.volume || c.currentVolume,
+        VolRatio: (liveMetrics[c.symbol]?.ratio || c.volumeRatio || 0).toFixed(2),
         BoxHigh: c.boxHigh,
         BoxLow: c.boxLow,
         Cap: c.marketCap,
-        DayChange: (c.dailyChange || 0).toFixed(2) + '%'
+        DayChange: ((liveMetrics[c.symbol]?.dailyChange || c.dailyChange) || 0).toFixed(2) + '%'
       }));
     }
 
@@ -156,7 +147,11 @@ export default function App() {
       interval = setInterval(async () => {
         try {
           const currentResults = resultsRef.current;
-          const candidates = currentResults?.candidates;
+          const candidates = currentResults ? [
+            ...(currentResults.darvas?.candidates || []),
+            ...(currentResults.rsTrend?.candidates || []),
+            ...(currentResults.custom?.candidates || [])
+          ].filter((v, i, a) => a.findIndex(t => t.symbol === v.symbol) === i) : [];
           
           if (Array.isArray(candidates) && candidates.length > 0) {
             const res = await fetch('/api/re-validate', {
@@ -169,8 +164,17 @@ export default function App() {
             });
             const data = await res.json();
             if (data.success) {
-              if (data.signals) {
-                setResults((prev: any) => prev ? { ...prev, signals: data.signals } : prev);
+              if (data.signals && data.signals.length > 0) {
+                setResults((prev: any) => {
+                  if (!prev) return prev;
+                  return {
+                    ...prev,
+                    darvas: {
+                      ...prev.darvas,
+                      signals: data.signals
+                    }
+                  };
+                });
               }
               if (data.liveMetrics) {
                 setLiveMetrics(data.liveMetrics);
@@ -187,13 +191,13 @@ export default function App() {
     };
   }, [activeScan, isMonitoring, volMultiplier]);
 
-  const runEngine = async () => {
+  const runAllScans = async () => {
     setIsRunning(true);
     setResults(null);
     setLogs([]);
-    setActiveScan('darvas');
+    setActiveScan('all');
     setIsMonitoring(true);
-    addLog("Initializing Darvas Engine...");
+    addLog("Initializing Unified Scanning Engine...");
 
     try {
       // Check cache first
@@ -205,71 +209,13 @@ export default function App() {
         addLog("WARNING: Market data is stale (over 12h). Run Data Keeper Sync!");
       }
 
-      addLog(`Step 1: Scanner agents deployed (Vol Multiplier: ${volMultiplier}x)`);
-      const response = await fetch(`/api/run-darvas-system?multiplier=${volMultiplier}`);
-      const data = await response.json();
-
-      if (data.success) {
-        addLog(`System completed using Vol Multiplier: ${data.config.VOLUME_MULTIPLIER}x`);
-        addLog(`Found ${data.candidates.length} candidates.`);
-        addLog(`Signals generated: ${data.signals.length}`);
-        addLog(`Trades executed: ${data.executedTrades.length}`);
-        setResults(data);
-      } else {
-        addLog(`Engine failed: ${data.error}`);
-      }
-    } catch (err) {
-      addLog(`Network Error: ${err}`);
-    } finally {
-      setIsRunning(false);
-    }
-  };
-
-  const runRSScan = async () => {
-    setIsRunning(true);
-    setResults(null);
-    setLogs([]);
-    setActiveScan('rsTrend');
-    setIsMonitoring(true);
-    addLog("Initializing RS Trend Analysis (Scan 2)...");
-
-    try {
-      const statusRes = await fetch('/api/data-keeper/status');
-      const status = await statusRes.json();
-      setSyncStatus(status);
-
-      addLog("Step 1: Filtering for Improving Relative Strength (10d > 30d > 60d > 90d)");
-      const response = await fetch(`/api/run-rs-trend-scan`);
-      const data = await response.json();
-
-      if (data.success) {
-        addLog(`Scan 2 Completed: Found ${data.candidates.length} stocks with improving RS trend.`);
-        setResults(data);
-      } else {
-        addLog(`Scan 2 failed: ${data.error}`);
-      }
-    } catch (err) {
-      addLog(`Network Error: ${err}`);
-    } finally {
-      setIsRunning(false);
-    }
-  };
-
-  const runCustomScan = async () => {
-    setIsRunning(true);
-    setResults(null);
-    setLogs([]);
-    setActiveScan('custom');
-    setIsMonitoring(true);
-    addLog("Initializing Custom Analytics Agent (Scan 3)...");
-
-    try {
-      addLog(`Filters: Vol > ${volMultiplier}x | Dist From High < ${maxDistFromHigh}% | Change ${dailyChangeMin}% to ${dailyChangeMax}%`);
-      const response = await fetch(`/api/run-custom-scan`, {
+      addLog(`Step 1: Scanner agents deployed (Vol Multiplier: ${volMultiplier}x, Dist < ${maxDistFromHigh}%, Daily ${dailyChangeMin}% to ${dailyChangeMax}%)`);
+      const response = await fetch(`/api/run-all-scans`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          filters: {
+          multiplier: volMultiplier,
+          customFilters: {
             volMult: volMultiplier,
             distFromHigh: maxDistFromHigh,
             dailyChangeMin,
@@ -280,65 +226,20 @@ export default function App() {
       const data = await response.json();
 
       if (data.success) {
-        addLog(`Scan 3 Completed: Found ${data.candidates.length} candidates.`);
+        addLog(`System completed.`);
+        addLog(`Darvas: ${data.darvas.candidates.length} candidates, ${data.darvas.signals.length} signals`);
+        addLog(`RS Trend: ${data.rsTrend.candidates.length} candidates`);
+        addLog(`Custom: ${data.custom.candidates.length} candidates`);
         setResults(data);
+        if (data.liveMetrics) {
+          setLiveMetrics(data.liveMetrics);
+        }
       } else {
-        addLog(`Scan 3 failed: ${data.error}`);
+        addLog(`Engine failed: ${data.error}`);
       }
     } catch (err) {
       addLog(`Network Error: ${err}`);
-    } finally {
-      setIsRunning(false);
-    }
-  };
-
-  const runVolumeSpikeScan = async () => {
-    setIsRunning(true);
-    setResults(null);
-    setLogs([]);
-    setActiveScan('volumeSpike');
-    setIsMonitoring(true);
-    addLog("Initializing Volume Spike Agent (Scan 4)...");
-
-    try {
-      addLog(`Searching for 5m Volume Spikes > ${spikeFactor}x historical average...`);
-      const response = await fetch(`/api/run-volume-spike-scan?factor=${spikeFactor}`);
-      const data = await response.json();
-
-      if (data.success) {
-        addLog(`Scan 4 Completed: Found ${data.spikes.length} volume spikes.`);
-        setResults(data);
-      } else {
-        addLog(`Scan 4 failed: ${data.error}`);
-      }
-    } catch (err) {
-      addLog(`Network Error: ${err}`);
-    } finally {
-      setIsRunning(false);
-    }
-  };
-
-  const runBacktest = async () => {
-    setIsRunning(true);
-    setResults(null);
-    setBacktestResults(null);
-    setLogs([]);
-    setActiveScan('backtest');
-    addLog("Backtesting Agent: Initializing index strategy analysis (Last 60 Days)...");
-
-    try {
-      addLog("Fetching 5m historical data for Nifty, Bank Nifty, and Sensex...");
-      const response = await fetch('/api/run-backtest');
-      const data = await response.json();
-
-      if (data.success) {
-        addLog(`Backtest Completed: Found ${data.results.reduce((sum: number, r: any) => sum + r.totalTrades, 0)} trades.`);
-        setBacktestResults(data.results);
-      } else {
-        addLog(`Backtest failed: ${data.error}`);
-      }
-    } catch (err) {
-      addLog(`Network Error: ${err}`);
+      console.error(err);
     } finally {
       setIsRunning(false);
     }
@@ -371,12 +272,7 @@ export default function App() {
     setIsSyncing(true);
     addLog("Data Keeper Agent: Starting market synchronization...");
     try {
-      const response = await fetch(
-  `${import.meta.env.VITE_API_URL}/api/data-keeper/sync`,
-  {
-    method: 'POST'
-  }
-);
+      const response = await fetch('/api/data-keeper/sync', { method: 'POST' });
       
       if (!response.ok) {
         const text = await response.text();
@@ -467,7 +363,7 @@ export default function App() {
             <motion.button
               whileHover={{ scale: 1.02, translateY: -1 }}
               whileTap={{ scale: 0.98 }}
-              onClick={runEngine}
+              onClick={runAllScans}
               disabled={isRunning}
               className={`flex items-center gap-2.5 px-6 py-3 rounded-2xl font-bold transition-all ${
                 isRunning 
@@ -475,68 +371,8 @@ export default function App() {
                   : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl shadow-indigo-600/30'
               }`}
             >
-              {isRunning && activeScan === 'darvas' ? <Activity className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 fill-current" />}
-              <span className="text-sm">Scan 1 (Darvas)</span>
-            </motion.button>
-
-            <motion.button
-              whileHover={{ scale: 1.02, translateY: -1 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={runRSScan}
-              disabled={isRunning}
-              className={`flex items-center gap-2.5 px-6 py-3 rounded-2xl font-bold transition-all ${
-                isRunning 
-                  ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
-                  : 'bg-[#00ad6f] hover:bg-[#00c27d] text-white shadow-xl shadow-emerald-600/30'
-              }`}
-            >
-              {isRunning && activeScan === 'rsTrend' ? <Activity className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5 fill-current" />}
-              <span className="text-sm">Scan 2 (RS Trend)</span>
-            </motion.button>
-
-            <motion.button
-              whileHover={{ scale: 1.02, translateY: -1 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={runCustomScan}
-              disabled={isRunning}
-              className={`flex items-center gap-2.5 px-6 py-3 rounded-2xl font-bold transition-all ${
-                isRunning 
-                  ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
-                  : 'bg-indigo-700 hover:bg-indigo-600 text-white shadow-xl shadow-indigo-600/30'
-              }`}
-            >
-              {isRunning && activeScan === 'custom' ? <Activity className="w-5 h-5 animate-spin" /> : <Filter className="w-5 h-5 fill-current" />}
-              <span className="text-sm">Scan 3 (Custom)</span>
-            </motion.button>
-
-            <motion.button
-              whileHover={{ scale: 1.02, translateY: -1 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={runVolumeSpikeScan}
-              disabled={isRunning}
-              className={`flex items-center gap-2.5 px-6 py-3 rounded-2xl font-bold transition-all ${
-                isRunning 
-                  ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
-                  : 'bg-amber-600 hover:bg-amber-500 text-white shadow-xl shadow-amber-600/30'
-              }`}
-            >
-              {isRunning && activeScan === 'volumeSpike' ? <Activity className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5 fill-current text-white" />}
-              <span className="text-sm">Scan 4 (Vol Spike)</span>
-            </motion.button>
-
-            <motion.button
-              whileHover={{ scale: 1.02, translateY: -1 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={runBacktest}
-              disabled={isRunning}
-              className={`flex items-center gap-2.5 px-6 py-3 rounded-2xl font-bold transition-all ${
-                isRunning && activeScan === 'backtest'
-                  ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
-                  : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl shadow-indigo-600/30'
-              }`}
-            >
-              <Activity className={`w-5 h-5 ${isRunning && activeScan === 'backtest' ? 'animate-spin' : ''}`} />
-              <span className="text-sm">Backtest Indices</span>
+              {isRunning ? <Activity className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 fill-current" />}
+              <span className="text-sm">Scan Market</span>
             </motion.button>
 
             {isMonitoring && (
@@ -717,7 +553,7 @@ export default function App() {
                     <BarChart3 className="w-12 h-12" />
                   </div>
                   <h3 className="text-xl font-medium text-zinc-400 mb-2">No Market Data Available</h3>
-                  <p className="max-w-md">The multi-agent system hasn't been triggered yet. Click 'Deploy Darvas Engine' or 'Backtest Indices' to start scanning the market.</p>
+                  <p className="max-w-md">The multi-agent system hasn't been triggered yet. Click 'Scan Market' to start scanning the market.</p>
                 </motion.div>
               ) : (
                 <motion.div 
@@ -726,6 +562,42 @@ export default function App() {
                   animate={{ opacity: 1, y: 0 }}
                   className="space-y-6"
                 >
+                  {/* Tabs */}
+                  {results && (
+                    <div className="flex bg-zinc-900/50 border border-zinc-800 p-1 rounded-xl w-full">
+                      <button
+                        onClick={() => setActiveTab('darvas')}
+                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-bold transition-all ${
+                          activeTab === 'darvas'
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                        }`}
+                      >
+                        Darvas Scan
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('rsTrend')}
+                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-bold transition-all ${
+                          activeTab === 'rsTrend'
+                            ? 'bg-[#00ad6f] text-white shadow-md'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                        }`}
+                      >
+                        RS Trend Scan
+                      </button>
+                      <button
+                        onClick={() => setActiveTab('custom')}
+                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-bold transition-all ${
+                          activeTab === 'custom'
+                            ? 'bg-purple-600 text-white shadow-md'
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                        }`}
+                      >
+                        Custom Scan
+                      </button>
+                    </div>
+                  )}
+
                   {/* Filter Slicers & System Settings */}
                   {activeScan !== 'backtest' && (
                     <>
@@ -792,14 +664,14 @@ export default function App() {
                         <div className="flex-1">
                           <div className="flex justify-between items-center">
                             <h4 className="text-xs font-bold text-indigo-100 uppercase tracking-wider">
-                              {activeScan === 'volumeSpike' ? 'Spike Factor' : 'System Threshold'}
+                              System Threshold
                             </h4>
                             <div className="bg-indigo-500 px-2 py-0.5 rounded text-[10px] font-bold text-white">
-                              {activeScan === 'volumeSpike' ? spikeFactor : volMultiplier}x
+                              {volMultiplier}x
                             </div>
                           </div>
                           <p className="text-[9px] text-indigo-300/70">
-                            {activeScan === 'volumeSpike' ? 'Factor: Last 5m / Avg 5m' : 'Engine: Volume Multiplier'}
+                            Engine: Volume Multiplier
                           </p>
                         </div>
                       </div>
@@ -808,17 +680,14 @@ export default function App() {
                         min="0.5" 
                         max="10" 
                         step="0.1"
-                        value={activeScan === 'volumeSpike' ? spikeFactor : volMultiplier}
-                        onChange={(e) => {
-                          if (activeScan === 'volumeSpike') setSpikeFactor(Number(e.target.value));
-                          else setVolMultiplier(Number(e.target.value));
-                        }}
+                        value={volMultiplier}
+                        onChange={(e) => setVolMultiplier(Number(e.target.value))}
                         className="w-full h-1.5 bg-indigo-900 rounded-lg appearance-none cursor-pointer accent-white"
                       />
                     </div>
                   </div>
 
-                  {activeScan === 'custom' && (
+                  {activeTab === 'custom' && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                       {/* Dist From High */}
                       <div className="bg-zinc-900/30 border border-zinc-800 p-4 rounded-2xl flex flex-col items-center justify-between gap-3">
@@ -883,172 +752,63 @@ export default function App() {
                 </>
               )}
 
-              {/* Summary Header */}
-              {activeScan === 'backtest' ? null : activeScan === 'volumeSpike' ? (
-                <div className="bg-amber-500/10 border border-amber-500/20 p-6 rounded-2xl text-center">
-                      <p className="text-xs font-semibold text-amber-500 uppercase tracking-widest mb-1">Volume Spikes Detected</p>
-                      <div className="text-3xl font-bold text-white mb-0.5">{results.spikes.length}</div>
-                      <p className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider">5-Minute Intervals</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-6">
-                      <SummaryMetric 
-                        label="Scan Scope" 
-                        value={results.candidates.length} 
-                        sub="Assets" 
-                        onClick={() => setActiveDetail('scope')}
-                      />
-                      <SummaryMetric 
-                        label="Valid Signals" 
-                        value={results.signals.length} 
-                        sub="Opportunities" 
-                        onClick={() => setActiveDetail('signals')}
-                      />
-                      <SummaryMetric label="Executions" value={results.executedTrades.length} sub="Orders" />
-                    </div>
-                  )}
-
-                  {/* Volume Spike Results */}
-                  {activeScan === 'volumeSpike' && (
-                    <section>
-                      <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-400 mb-4 px-1">Intraday Anomalies</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {results.spikes.map((s: any, i: number) => (
-                          <VolumeSpikeCard key={i} spike={s} onClick={() => onCompanyClick(s.symbol)} />
-                        ))}
+                  {/* Summary Header */}
+                  {results && (() => {
+                    const activeResults = activeTab === 'darvas' ? results.darvas : activeTab === 'rsTrend' ? results.rsTrend : results.custom;
+                    return (
+                      <div className="grid grid-cols-3 gap-6">
+                        <SummaryMetric 
+                          label="Scan Scope" 
+                          value={activeResults?.candidates?.length || 0} 
+                          sub="Assets" 
+                          onClick={() => setActiveDetail('scope')}
+                        />
+                        <SummaryMetric 
+                          label="Valid Signals" 
+                          value={activeResults?.signals?.length || 0} 
+                          sub="Opportunities" 
+                          onClick={() => setActiveDetail('signals')}
+                        />
+                        <SummaryMetric 
+                          label="Executions" 
+                          value={activeResults?.executedTrades?.length || 0} 
+                          sub="Orders" 
+                        />
                       </div>
-                    </section>
-                  )}
-
-                  {/* Backtest Results */}
-                  {activeScan === 'backtest' && backtestResults && (
-                    <section className="space-y-8">
-                      <div className="flex justify-between items-center mb-6">
-                        <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-400 px-1">Index Backtest Analysis</h3>
-                        <button 
-                          onClick={exportTradeLogs}
-                          className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/10 border border-indigo-500/30 rounded-lg text-indigo-400 font-bold hover:bg-indigo-500 hover:text-white transition-all text-[10px] uppercase tracking-wider"
-                        >
-                          <CloudDownload className="w-3.5 h-3.5" />
-                          Detail Sheet (CSV)
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {backtestResults.map((r, i) => (
-                          <div key={i} className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-2xl relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                              <TrendingUp className="w-12 h-12 text-white" />
-                            </div>
-                            <h4 className="text-xl font-bold text-white mb-1">{r.symbol.replace('^', '')}</h4>
-                            <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-4">Last 60 Days Performance</p>
-                            
-                            <div className="space-y-4">
-                              <div className="flex justify-between items-end">
-                                <div>
-                                  <div className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">Win Rate</div>
-                                  <div className="text-2xl font-mono font-bold text-emerald-400">{r.winRate.toFixed(1)}%</div>
-                                </div>
-                                <div className="text-right">
-                                  <div className="text-[10px] text-zinc-500 uppercase font-black tracking-widest mb-1">Trades</div>
-                                  <div className="text-2xl font-mono font-bold text-white">{r.totalTrades}</div>
-                                </div>
-                              </div>
-                              
-                              <div className="pt-4 border-t border-zinc-800/50">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-xs text-zinc-400">Net Return</span>
-                                  <span className={`text-sm font-mono font-bold ${r.totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                    {r.totalPnl >= 0 ? '+' : ''}{r.totalPnl.toFixed(2)}%
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="bg-zinc-900/30 border border-zinc-800 rounded-2xl overflow-hidden">
-                        <div className="p-4 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
-                          <h4 className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em]">Live Simulation Log</h4>
-                          <div className="flex gap-4">
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                              <span className="text-[10px] text-zinc-500 uppercase font-bold">Target</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-2 h-2 rounded-full bg-red-500" />
-                              <span className="text-[10px] text-zinc-500 uppercase font-bold">SL</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800">
-                          <table className="w-full text-left border-collapse">
-                            <thead className="sticky top-0 bg-[#0f0f12] z-10">
-                              <tr className="border-b border-zinc-800">
-                                <th className="p-4 text-[9px] font-black text-zinc-500 uppercase tracking-widest">Symbol</th>
-                                <th className="p-4 text-[9px] font-black text-zinc-500 uppercase tracking-widest">Time</th>
-                                <th className="p-4 text-[9px] font-black text-zinc-500 uppercase tracking-widest">Signal</th>
-                                <th className="p-4 text-[9px] font-black text-zinc-500 uppercase tracking-widest text-right">Entry</th>
-                                <th className="p-4 text-[9px] font-black text-zinc-500 uppercase tracking-widest text-right">Exit</th>
-                                <th className="p-4 text-[9px] font-black text-zinc-500 uppercase tracking-widest text-right">PnL</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {backtestResults.flatMap(r => r.trades.map((t: any, idx: number) => (
-                                <tr key={`${r.symbol}-${idx}`} className="border-b border-zinc-800/30 hover:bg-zinc-800/20 transition-colors">
-                                  <td className="p-4 py-3 font-bold text-zinc-300 text-xs">{r.symbol.replace('^', '')}</td>
-                                  <td className="p-4 py-3 text-zinc-500 font-mono text-[10px]">{t.entryTime}</td>
-                                  <td className="p-4 py-3">
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-black ${t.type === 'BUY' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
-                                      {t.type}
-                                    </span>
-                                  </td>
-                                  <td className="p-4 py-3 text-right text-zinc-300 font-mono text-xs">₹{t.entryPrice.toLocaleString()}</td>
-                                  <td className="p-4 py-3 text-right text-zinc-300 font-mono text-xs">₹{t.exitPrice?.toLocaleString() || '-'}</td>
-                                  <td className={`p-4 py-3 text-right font-mono text-xs font-bold ${t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                    {t.pnl >= 0 ? '+' : ''}{t.pnl?.toFixed(2)}%
-                                  </td>
-                                </tr>
-                              )))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    </section>
-                  )}
+                    );
+                  })()}
 
                   {/* Executed Trades */}
-                  {(activeScan !== 'volumeSpike' && activeScan !== 'backtest' && results?.executedTrades) && (
+                  {(results && (activeTab === 'darvas' ? results.darvas.executedTrades : activeTab === 'rsTrend' ? results.rsTrend.executedTrades : results.custom.executedTrades)?.length > 0) && (
                     <section>
                       <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-400 mb-4 px-1">Recent Executions</h3>
                       <div className="space-y-3">
-                        {results.executedTrades.length === 0 ? (
-                          <div className="bg-zinc-900/50 border border-zinc-800 p-8 rounded-2xl text-center text-zinc-500 italic">
-                            No trades met the multi-agent consensus requirements today.
-                          </div>
-                        ) : (
-                          results.executedTrades.map((trade: any, i: number) => (
-                            <TradeCard key={i} trade={trade} />
-                          ))
-                        )}
+                        {(() => {
+                           const activeResults = activeTab === 'darvas' ? results.darvas : activeTab === 'rsTrend' ? results.rsTrend : results.custom;
+                           return activeResults?.executedTrades?.map((trade: any, i: number) => (
+                              <TradeCard key={i} trade={trade} />
+                           ));
+                        })()}
                       </div>
                     </section>
                   )}
 
                   {/* Scanner Results */}
-                  {activeScan !== 'volumeSpike' && activeScan !== 'backtest' && (
+                  {results && (
                     <section>
                       <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-400 mb-4 px-1">Candidate Pipeline</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {results.candidates
-                            ?.filter((c: any) => {
-                              const pos = ((c.currentPrice - c.boxLow) / (c.boxHigh - c.boxLow)) * 100;
-                              return pos >= positionFilter && c.volumeRatio >= volumeFilter;
-                            })
-                            .map((c: any, i: number) => (
-                             <CandidateCard key={i} candidate={c} live={liveMetrics[c.symbol]} onClick={() => onCompanyClick(c.symbol)} />
-                          ))}
+                          {(() => {
+                            const activeResults = activeTab === 'darvas' ? results.darvas : activeTab === 'rsTrend' ? results.rsTrend : results.custom;
+                            return activeResults?.candidates
+                              ?.filter((c: any) => {
+                                const pos = ((c.currentPrice - c.boxLow) / (c.boxHigh - c.boxLow)) * 100;
+                                return pos >= positionFilter && c.volumeRatio >= volumeFilter;
+                              })
+                              .map((c: any, i: number) => (
+                               <CandidateCard key={i} candidate={c} live={liveMetrics[c.symbol]} onClick={() => onCompanyClick(c.symbol)} />
+                              ))
+                          })()}
                         </div>
                     </section>
                   )}
@@ -1176,20 +936,22 @@ export default function App() {
               <div className="p-6 max-h-[60vh] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800">
                 {activeDetail === 'scope' ? (
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {results?.candidates
-                      .filter((c: any) => {
-                        const pos = ((c.currentPrice - c.boxLow) / (c.boxHigh - c.boxLow)) * 100;
-                        return pos >= positionFilter && c.volumeRatio >= volumeFilter;
-                      })
-                      .map((c: any, i: number) => (
-                      <div 
-                        key={i} 
-                        onClick={() => {
-                          setActiveDetail(null);
-                          onCompanyClick(c.symbol);
-                        }}
-                        className="bg-zinc-900/50 border border-zinc-800 p-4 rounded-xl cursor-pointer hover:border-indigo-500/50 hover:bg-zinc-800 transition-all group/sc"
-                      >
+                    {(() => {
+                      const activeResults = activeTab === 'darvas' ? results?.darvas : activeTab === 'rsTrend' ? results?.rsTrend : results?.custom;
+                      return activeResults?.candidates
+                        ?.filter((c: any) => {
+                          const pos = ((c.currentPrice - c.boxLow) / (c.boxHigh - c.boxLow)) * 100;
+                          return pos >= positionFilter && c.volumeRatio >= volumeFilter;
+                        })
+                        .map((c: any, i: number) => (
+                        <div 
+                          key={i} 
+                          onClick={() => {
+                            setActiveDetail(null);
+                            onCompanyClick(c.symbol);
+                          }}
+                          className="bg-zinc-900/50 border border-zinc-800 p-4 rounded-xl cursor-pointer hover:border-indigo-500/50 hover:bg-zinc-800 transition-all group/sc"
+                        >
                         <div className="flex justify-between items-start mb-2">
                           <div>
                             <div className="flex items-center gap-2">
@@ -1243,23 +1005,26 @@ export default function App() {
                           </div>
                         </div>
                       </div>
-                    ))}
+                      ));
+                    })()}
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {results?.signals
-                      .filter((s: any) => s.volumeRatio >= volumeFilter)
-                      .map((s: any, i: number) => {
-                      const volMult = s.currentVolume / s.avgVolume;
-                      return (
-                        <div 
-                          key={i} 
-                          onClick={() => {
-                            setActiveDetail(null);
-                            onCompanyClick(s.symbol);
-                          }}
-                          className="bg-zinc-900/50 border border-zinc-800 p-4 rounded-xl flex items-center justify-between cursor-pointer hover:border-emerald-500/50 hover:bg-zinc-800 transition-all group/sig"
-                        >
+                    {(() => {
+                      const activeResults = activeTab === 'darvas' ? results?.darvas : activeTab === 'rsTrend' ? results?.rsTrend : results?.custom;
+                      return activeResults?.signals
+                        ?.filter((s: any) => (s.volumeRatio || (s.currentVolume / s.avgVolume)) >= volumeFilter)
+                        .map((s: any, i: number) => {
+                        const volMult = (s.currentVolume && s.avgVolume) ? s.currentVolume / s.avgVolume : s.volumeRatio || 1;
+                        return (
+                          <div 
+                            key={i} 
+                            onClick={() => {
+                              setActiveDetail(null);
+                              onCompanyClick(s.symbol);
+                            }}
+                            className="bg-zinc-900/50 border border-zinc-800 p-4 rounded-xl flex items-center justify-between cursor-pointer hover:border-emerald-500/50 hover:bg-zinc-800 transition-all group/sig"
+                          >
                           <div className="flex items-center gap-4">
                             <div className="w-10 h-10 bg-emerald-500/10 rounded-lg flex items-center justify-center group-hover/sig:bg-emerald-500/20 transition-all">
                               <TrendingUp className="w-5 h-5 text-emerald-500" />
@@ -1275,7 +1040,8 @@ export default function App() {
                           </div>
                         </div>
                       );
-                    })}
+                      });
+                    })()}
                   </div>
                 )}
               </div>
