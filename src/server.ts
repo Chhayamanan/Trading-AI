@@ -1,4 +1,4 @@
-import cors from "cors";k
+import cors from "cors";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
