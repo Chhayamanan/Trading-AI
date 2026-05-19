@@ -1,7 +1,4 @@
-import yahooFinanceImport from "yahoo-finance2";
-
-const YahooFinanceClass = (yahooFinanceImport as any).default || yahooFinanceImport;
-const yahooFinance = new YahooFinanceClass();
+import yahooFinance from "yahoo-finance2";
 
 export class YahooService {
   static async getHistoricalData(symbol: string, excludeToday = false) {
