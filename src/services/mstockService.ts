@@ -40,7 +40,7 @@ export class MstockService {
       };
 
       const response = await axios.post(
-        `${MSTOCK_BASE_URL}/orders/`, 
+        `${MSTOCK_BASE_URL}/orders`, 
         orderPayload,
         {
           headers: {
