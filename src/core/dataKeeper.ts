@@ -43,8 +43,8 @@ export class DataKeeper {
           const candles = await YahooService.get90DayData(symbol);
           cache.data[symbol] = candles;
 
-          // Intraday 5m Data (59 Days)
-          const intraday = await YahooService.getIntradayData(symbol, 59);
+          // Intraday 5m Data (5 Days)
+          const intraday = await YahooService.getIntradayData(symbol, 5);
           intradayCache.data[symbol] = intraday;
 
           console.log(`[DATA KEEPER] Updated ${symbol} (${i + batch.indexOf(symbol) + 1}/${uniqueSymbols.length})`);
