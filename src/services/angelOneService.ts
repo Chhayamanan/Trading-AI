@@ -189,8 +189,7 @@ export class AngelOneService {
     if (!this.jwtToken) {
       const authed = await this.authenticate();
       if (!authed) {
-        console.log(`[PAPER TRADE] BUY ${quantity} ${symbol}`);
-        return `PAPER-${Date.now()}`;
+        throw new Error("AngelOne Auth Failed. Cannot trade.");
       }
     }
 
@@ -204,7 +203,7 @@ export class AngelOneService {
 
       if (!symboltoken) {
         console.error(`Angel One order failed: Token not found for ${tradingSymbol}`);
-        return `ERROR-${Date.now()}`;
+        throw new Error(`Token not found for ${tradingSymbol}`);
       }
 
       const response = await axios.post(
@@ -244,14 +243,13 @@ export class AngelOneService {
       } else {
         console.error("Order placement failed:", response.data);
         if (response.data.errorcode === 'AG7002' || response.data.message?.includes('Unregistered IP')) {
-          console.log(`[PAPER TRADE FALLBACK] BUY ${quantity} ${tradingSymbol} (IP Restriction AG7002)`);
-          return `PAPER-${Date.now()}`;
+          throw new Error(`AngelOne API IP Restriction (AG7002): Please register IP ${await getPublicIp()} in SmartAPI`);
         }
-        return `FAILED: ${response.data.message || response.data.errorcode || Date.now()}`;
+        throw new Error(`FAILED: ${response.data.message || response.data.errorcode || "Unknown Error"}`);
       }
     } catch (error: any) {
       console.error("Order placement error:", error.response?.data || error);
-      return `ERROR: ${error.response?.data?.message || error.message || Date.now()}`;
+      throw new Error(`ERROR: ${error.response?.data?.message || error.message || "Unknown error placing order"}`);
     }
   }
 }
