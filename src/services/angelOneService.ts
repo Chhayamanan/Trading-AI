@@ -176,6 +176,11 @@ export class AngelOneService {
       } catch (error: any) {
         console.error("Angel One Market Quote Error:", error.response?.data || error.message);
       }
+      
+      // Prevent hitting rate limits (allow 1000ms delay between batch requests)
+      if (i + BATCH_SIZE < tokens.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
     }
 
     if (successCount === 0) {
