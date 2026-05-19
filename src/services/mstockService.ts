@@ -28,7 +28,8 @@ export class MstockService {
       throw new Error("Mstock Auth Failed. Cannot trade.");
     }
     
-    const MSTOCK_BASE_URL = process.env.MSTOCK_BASE_URL || 'https://api.mstock.com';
+    const baseUrlRaw = process.env.MSTOCK_BASE_URL || 'https://api.mstock.com';
+    const MSTOCK_BASE_URL = baseUrlRaw.endsWith('/') ? baseUrlRaw.slice(0, -1) : baseUrlRaw;
 
     // Simulate placing an order to Mstock API
     try {
