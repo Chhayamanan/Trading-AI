@@ -28,9 +28,9 @@ export class MstockService {
       throw new Error("Mstock Auth Failed. Cannot trade.");
     }
     
-    const MSTOCK_BASE_URL = 'https://tradingapi.mstock.com/v1';
+    const MSTOCK_BASE_URL = 'https://tradeapi.mstock.com/interactive';
 
-    // Simulate placing an order to Mstock API
+    // Simulate placing an order to m.Stock API Gateway
     try {
       const orderPayload = {
         symbol: symbol,
