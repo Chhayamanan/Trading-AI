@@ -3,6 +3,24 @@ import yf from "yahoo-finance2";
 const YahooFinanceClass = (yf as any).default || yf;
 const yahooFinance = typeof YahooFinanceClass === 'function' ? new (YahooFinanceClass as any)({ suppressNotices: ['yahooSurvey'] }) : yf;
 
+// Force bypass of any active proxy settings on serverless/Railway
+delete process.env.http_proxy;
+delete process.env.https_proxy;
+delete process.env.HTTP_PROXY;
+delete process.env.HTTPS_PROXY;
+delete process.env.ALL_PROXY;
+delete process.env.all_proxy;
+
+if (yahooFinance._opts) {
+  yahooFinance._opts.fetchOptions = {
+    ...(yahooFinance._opts.fetchOptions || {}),
+    // Bypass node-fetch proxy agents:
+    agent: false,
+    // Bypass native fetch (Node 18+) dispatcher proxies:
+    dispatcher: undefined
+  };
+}
+
 
 export class YahooService {
   static async getHistoricalData(symbol: string, excludeToday = false) {
