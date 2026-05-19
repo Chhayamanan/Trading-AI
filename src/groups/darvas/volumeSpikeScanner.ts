@@ -1,6 +1,6 @@
 import { DataKeeper } from "../../core/dataKeeper";
 import { YahooService } from "../../services/yahooService";
-import { AngelOneService } from "../../services/angelOneService";
+import { MstockService } from "../../services/mstockService";
 
 export interface VolumeSpike {
   symbol: string;
@@ -19,7 +19,7 @@ export class VolumeSpikeScanner {
     const spikes: VolumeSpike[] = [];
     
     // Fetch live quotes for current price and today's stats if possible
-    let liveQuotes = await AngelOneService.getCurrentPrices(symbols);
+    let liveQuotes = await MstockService.getCurrentPrices(symbols);
     
     if (Object.keys(liveQuotes).length === 0 && symbols.length > 0) {
        liveQuotes = await YahooService.getCurrentPrices(symbols);

@@ -1,5 +1,5 @@
 import { Trade } from "../models/trade";
-import { AngelOneService } from "./angelOneService";
+import { MstockService } from "./mstockService";
 
 export class BrokerService {
   private static executedToday: Set<string> = new Set();
@@ -24,7 +24,7 @@ export class BrokerService {
     }
 
     console.log(`[BROKER] Requesting BUY ${symbol} @ ${entry} QTY: ${quantity}`);
-    const orderId = await AngelOneService.placeOrder(symbol, quantity);
+    const orderId = await MstockService.placeOrder(symbol, quantity);
 
     if (orderId && !orderId.startsWith("FAILED") && !orderId.startsWith("ERROR")) {
       this.executedToday.add(symbol);

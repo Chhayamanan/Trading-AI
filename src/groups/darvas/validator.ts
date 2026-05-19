@@ -1,7 +1,7 @@
 import { StockCandidate } from "../../models/stock";
 import { BuySignal } from "../../models/signal";
 import { YahooService } from "../../services/yahooService";
-import { AngelOneService } from "../../services/angelOneService";
+import { MstockService } from "../../services/mstockService";
 import { SETTINGS } from "../../config/settings";
 
 export class DarvasValidator {
@@ -16,7 +16,7 @@ export class DarvasValidator {
 
     try {
       const symbols = stocks.map(s => s.symbol);
-      let liveQuotes = await AngelOneService.getCurrentPrices(symbols);
+      let liveQuotes = await MstockService.getCurrentPrices(symbols);
       
       if (Object.keys(liveQuotes).length === 0 && symbols.length > 0) {
          liveQuotes = await YahooService.getCurrentPrices(symbols);

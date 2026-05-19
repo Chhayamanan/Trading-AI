@@ -9,6 +9,7 @@ import { GroupLeader } from "./core/groupLeader";
 import { DarvasExecuter } from "./groups/darvas/executer";
 import { CEOEA } from "./core/ceoEA";
 import { SETTINGS } from "./config/settings";
+import { MstockService } from "./services/mstockService";
 
 import { DataKeeper } from "./core/dataKeeper";
 import { VolumeSpikeScanner } from "./groups/darvas/volumeSpikeScanner";
@@ -41,21 +42,15 @@ async function startServer() {
     }
   });
 
-  app.get("/api/test-angel-auth", async (req, res) => {
+  app.get("/api/test-mstock-auth", async (req, res) => {
     try {
-      const clientCode = process.env.ANGEL_CLIENT_CODE;
-      const hasPassword = !!process.env.ANGEL_PASSWORD;
-      const hasTotpSecret = !!process.env.ANGEL_TOTP_SECRET;
-      const hasApiKey = !!process.env.ANGEL_API_KEY;
+      const hasApiKey = !!process.env.MSTOCK_API_KEY;
       
-      const result = await AngelOneService.authenticate();
+      const result = await MstockService.authenticate();
       res.json({ 
         success: true, 
         result,
         envVarsPresent: {
-           clientCode,
-           hasPassword,
-           hasTotpSecret,
            hasApiKey
         }
       });

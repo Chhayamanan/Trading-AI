@@ -5,7 +5,7 @@ import { StockCandidate } from "../../models/stock";
 import { RSAgent } from "../../core/rsAgent";
 import { LARGE_CAP_STOCKS, MIDCAP_STOCKS, SMALLCAP_STOCKS, getBenchmarkIndex, MARKET_UNIVERSE } from "../../services/marketDataService";
 import { YahooService } from "../../services/yahooService";
-import { AngelOneService } from "../../services/angelOneService";
+import { MstockService } from "../../services/mstockService";
 
 export class DarvasScanner {
   static async scan(symbols: string[], options: { 
@@ -29,10 +29,10 @@ export class DarvasScanner {
 
     // Pre-fetch LIVE prices for all symbols in this scan
     LoggerService.log(`[SCANNER] Fetching live quotes for ${symbols.length} symbols...`);
-    let liveQuotes = await AngelOneService.getCurrentPrices(symbols);
+    let liveQuotes = await MstockService.getCurrentPrices(symbols);
 
     if (Object.keys(liveQuotes).length === 0 && symbols.length > 0) {
-      LoggerService.log(`[SCANNER] WARNING: AngelOne returned 0 live quotes. Falling back to Yahoo Finance...`);
+      LoggerService.log(`[SCANNER] WARNING: Mstock returned 0 live quotes. Falling back to Yahoo Finance...`);
       liveQuotes = await YahooService.getCurrentPrices(symbols);
     }
 
