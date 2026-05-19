@@ -1,3 +1,7 @@
+// Bypass Railway proxy variables immediately before importing anything that brings in Undici/Fetch
+process.env.NO_PROXY = "*";
+process.env.no_proxy = "*";
+
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
