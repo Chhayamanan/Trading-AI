@@ -132,6 +132,7 @@ export class AngelOneService {
 
     if (tokens.length === 0) return map;
 
+    let successCount = 0;
     // API limits batch size to 50 tokens
     const BATCH_SIZE = 50;
     for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
@@ -168,12 +169,18 @@ export class AngelOneService {
                 price: q.ltp || 0,
                 volume: q.tradeVolume || q.tradedQty || q.volTraded || q.volume || 0
               };
+              successCount++;
             }
           });
         }
       } catch (error: any) {
         console.error("Angel One Market Quote Error:", error.response?.data || error.message);
       }
+    }
+
+    if (successCount === 0) {
+      console.warn("[AngelOne] Failed to fetch quotes, likely IP restriction or rate limit. Returning empty.");
+      return {};
     }
 
     return map;

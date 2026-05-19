@@ -29,10 +29,11 @@ export class DarvasScanner {
 
     // Pre-fetch LIVE prices for all symbols in this scan
     LoggerService.log(`[SCANNER] Fetching live quotes for ${symbols.length} symbols...`);
-    const liveQuotes = await AngelOneService.getCurrentPrices(symbols);
+    let liveQuotes = await AngelOneService.getCurrentPrices(symbols);
 
     if (Object.keys(liveQuotes).length === 0 && symbols.length > 0) {
-      LoggerService.log(`[SCANNER] CRITICAL WARNING: API returned 0 live quotes.`);
+      LoggerService.log(`[SCANNER] WARNING: AngelOne returned 0 live quotes. Falling back to Yahoo Finance...`);
+      liveQuotes = await YahooService.getCurrentPrices(symbols);
     }
 
     // Pre-fetch Nifty 50 data for comparison (Historical)

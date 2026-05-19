@@ -32,9 +32,36 @@ async function startServer() {
   });
 
   app.get("/api/data-keeper/status", async (req, res) => {
-    const lastSync = await DataKeeper.getLastSyncTime();
-    const healthy = await DataKeeper.isCacheHealthy();
-    res.json({ lastSync, healthy });
+    try {
+      const lastSync = await DataKeeper.getLastSyncTime();
+      const healthy = await DataKeeper.isCacheHealthy();
+      res.json({ lastSync, healthy });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.get("/api/test-angel-auth", async (req, res) => {
+    try {
+      const clientCode = process.env.ANGEL_CLIENT_CODE;
+      const hasPassword = !!process.env.ANGEL_PASSWORD;
+      const hasTotpSecret = !!process.env.ANGEL_TOTP_SECRET;
+      const hasApiKey = !!process.env.ANGEL_API_KEY;
+      
+      const result = await AngelOneService.authenticate();
+      res.json({ 
+        success: true, 
+        result,
+        envVarsPresent: {
+           clientCode,
+           hasPassword,
+           hasTotpSecret,
+           hasApiKey
+        }
+      });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: String(e) });
+    }
   });
 
   app.get("/api/data-keeper/export", async (req, res) => {
