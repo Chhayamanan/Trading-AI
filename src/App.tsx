@@ -139,67 +139,74 @@ export default function App() {
     setLogs(prev => [...prev.slice(-19), `[${new Date().toLocaleTimeString()}] ${msg}`]);
   };
 
+  const loggedErrorsRef = React.useRef(new Set<string>());
+
+  const permanentlyRejectedRef = React.useRef(new Set<string>());
+
+  const isFetchingRef = React.useRef(false);
+
   React.useEffect(() => {
     let interval: NodeJS.Timeout;
     if (activeScan && isMonitoring) {
       addLog(`Live Monitoring Link established (${activeScan} mode)`);
       interval = setInterval(async () => {
+        if (isFetchingRef.current) return;
+        isFetchingRef.current = true;
         try {
-          const currentResults = resultsRef.current;
-          const candidates = currentResults ? [
-            ...(currentResults.darvas?.candidates || []),
-            ...(currentResults.rsTrend?.candidates || []),
-            ...(currentResults.custom?.candidates || [])
-          ].filter((v, i, a) => a.findIndex(t => t.symbol === v.symbol) === i) : [];
-          
-          if (Array.isArray(candidates) && candidates.length > 0) {
-            const res = await fetch('/api/re-validate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                candidates: candidates,
-                multiplier: volMultiplier 
-              })
-            });
-            const data = await res.json();
-            if (data.success) {
-              if (data.signals && data.signals.length > 0) {
-                setResults((prev: any) => {
-                  if (!prev) return prev;
-                  const newExecutedTrades = data.executedTrades || [];
-                  const existingTrades = prev.darvas?.executedTrades || [];
-                  const combinedTrades = [...existingTrades];
-
-                  newExecutedTrades.forEach((newT: any) => {
-                    if (!combinedTrades.some(t => t.symbol === newT.symbol)) {
-                      combinedTrades.push(newT);
-                    }
-                  });
-
-                  return {
-                    ...prev,
-                    darvas: {
-                      ...prev.darvas,
-                      signals: data.signals,
-                      executedTrades: combinedTrades
-                    }
-                  };
-                });
+          const excludeSymbols = Array.from(permanentlyRejectedRef.current);
+          const response = await fetch(`/api/run-all-scans`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              multiplier: volMultiplier,
+              excludeSymbols,
+              customFilters: {
+                volMult: volMultiplier,
+                distFromHigh: maxDistFromHigh,
+                dailyChangeMin,
+                dailyChangeMax
               }
-              if (data.liveMetrics) {
-                setLiveMetrics(data.liveMetrics);
-              }
+            })
+          });
+          const data = await response.json();
+          if (data.success) {
+            if (data.darvas.rejections && data.darvas.rejections.length > 0) {
+              data.darvas.rejections.forEach((rej: any) => {
+                const key = rej.symbol;
+                if (!loggedErrorsRef.current.has(key)) {
+                  addLog(`${rej.symbol} Validation Failed: ${rej.reason}`);
+                  loggedErrorsRef.current.add(key);
+                }
+              });
+            }
+            if (data.darvas.signals && data.darvas.signals.length > 0) {
+              const prevTrades = resultsRef.current?.darvas?.executedTrades || [];
+              const newTrades = data.darvas.executedTrades || [];
+              const combinedTrades = [...prevTrades];
+              newTrades.forEach((newT: any) => {
+                if (!combinedTrades.some(t => t.symbol === newT.symbol)) {
+                  combinedTrades.push(newT);
+                  addLog(`TRADE EXECUTED: ${newT.symbol} at ${newT.buyPrice}`);
+                }
+              });
+              data.darvas.executedTrades = combinedTrades;
+            }
+            setResults(data);
+            if (data.liveMetrics) {
+              setLiveMetrics(data.liveMetrics);
             }
           }
         } catch (e) {
           console.error("Monitor Error:", e);
+        } finally {
+          isFetchingRef.current = false;
         }
       }, 5000);
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [activeScan, isMonitoring, volMultiplier]);
+  }, [activeScan, isMonitoring, volMultiplier, maxDistFromHigh, dailyChangeMin, dailyChangeMax]);
 
   const runAllScans = async () => {
     setIsRunning(true);
@@ -238,6 +245,11 @@ export default function App() {
       if (data.success) {
         addLog(`System completed.`);
         addLog(`Darvas: ${data.darvas.candidates.length} candidates, ${data.darvas.signals.length} signals`);
+        if (data.darvas.rejections && data.darvas.rejections.length > 0) {
+          data.darvas.rejections.forEach((rej: any) => {
+            addLog(`Blocked: ${rej.symbol} - ${rej.reason}`);
+          });
+        }
         addLog(`RS Trend: ${data.rsTrend.candidates.length} candidates`);
         addLog(`Custom: ${data.custom.candidates.length} candidates`);
         setResults(data);

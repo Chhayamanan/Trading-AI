@@ -28,6 +28,9 @@ export class BrokerService {
 
     if (orderId && !orderId.startsWith("FAILED") && !orderId.startsWith("ERROR")) {
       this.executedToday.add(symbol);
+    } else {
+      console.log(`[BROKER] Trade failed for ${symbol}: ${orderId}`);
+      throw new Error(`Broker API: ${orderId}`);
     }
 
     return {

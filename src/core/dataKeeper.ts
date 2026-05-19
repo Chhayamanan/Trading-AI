@@ -11,6 +11,11 @@ export interface CachedData {
 }
 
 export class DataKeeper {
+  private static memoryCache: CachedData | null = null;
+  private static memoryIntradayCache: CachedData | null = null;
+  private static lastCacheLoad = 0;
+  private static lastIntradayLoad = 0;
+
   static async fetchAndStore(symbols: string[]) {
     // Unique symbols only
     const uniqueSymbols = [...new Set(symbols)];
@@ -57,6 +62,11 @@ export class DataKeeper {
     await fs.writeFile(STORAGE_PATH, JSON.stringify(cache));
     await fs.writeFile(INTRADAY_STORAGE_PATH, JSON.stringify(intradayCache));
 
+    this.memoryCache = cache;
+    this.lastCacheLoad = Date.now();
+    this.memoryIntradayCache = intradayCache;
+    this.lastIntradayLoad = Date.now();
+
     console.log(`[DATA KEEPER] Synchronization complete.`);
     return cache;
   }
@@ -97,18 +107,26 @@ export class DataKeeper {
   }
 
   private static async readCache(): Promise<CachedData | null> {
+    const now = Date.now();
+    if (this.memoryCache && (now - this.lastCacheLoad < 300000)) return this.memoryCache;
     try {
       const content = await fs.readFile(STORAGE_PATH, "utf-8");
-      return JSON.parse(content);
+      this.memoryCache = JSON.parse(content);
+      this.lastCacheLoad = now;
+      return this.memoryCache;
     } catch (err) {
       return null;
     }
   }
 
   private static async readIntradayCache(): Promise<CachedData | null> {
+    const now = Date.now();
+    if (this.memoryIntradayCache && (now - this.lastIntradayLoad < 300000)) return this.memoryIntradayCache;
     try {
       const content = await fs.readFile(INTRADAY_STORAGE_PATH, "utf-8");
-      return JSON.parse(content);
+      this.memoryIntradayCache = JSON.parse(content);
+      this.lastIntradayLoad = now;
+      return this.memoryIntradayCache;
     } catch (err) {
       return null;
     }

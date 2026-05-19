@@ -59,7 +59,7 @@ export const INDICES = [
   "^NSEI",    // NIFTY 50 (Benchmark)
   "^CNX100",  // NIFTY 100 (Large Cap)
   "^NSMIDCP", // NIFTY MIDCAP 100
-  "^CNXSC",   // NIFTY SMALLCAP 100 (Corrected)
+  "BSE-SMLCAP.BO",   // BSE SMALLCAP (Equivalent to NIFTY SMALLCAP 100)
 ];
 
 export const RAW_UNIVERSE = [...LARGE_CAP_STOCKS, ...MIDCAP_STOCKS, ...SMALLCAP_STOCKS, "^NSEI", "^NSEBANK", "^BSESN"];
@@ -69,6 +69,6 @@ export const NIFTY50 = LARGE_CAP_STOCKS;
 export function getBenchmarkIndex(symbol: string): string {
   if (LARGE_CAP_STOCKS.includes(symbol)) return "^CNX100";
   if (MIDCAP_STOCKS.includes(symbol)) return "^NSMIDCP";
-  if (SMALLCAP_STOCKS.includes(symbol)) return "^CNXSC";
+  if (SMALLCAP_STOCKS.includes(symbol)) return "BSE-SMLCAP.BO";
   return "^NSEI";
 }

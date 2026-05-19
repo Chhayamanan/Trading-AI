@@ -58,20 +58,30 @@ async function startServer() {
   app.post("/api/run-all-scans", async (req, res) => {
     try {
       console.log(`===== STARTING UNIFIED SCAN =====`);
-      const { customFilters, multiplier } = req.body;
+      const { customFilters, multiplier, excludeSymbols = [] } = req.body;
       
-      const darvasCandidates = await DarvasScanner.scan(RAW_UNIVERSE, { volumeMultiplier: multiplier });
+      const targetUniverse = RAW_UNIVERSE.filter(s => !excludeSymbols.includes(s));
+      
+      const darvasCandidates = await DarvasScanner.scan(targetUniverse, { volumeMultiplier: multiplier });
       const { signals: darvasSignals, liveMetrics: darvasLiveMetrics } = await DarvasValidator.validate(darvasCandidates, multiplier);
       
       const darvasTrades = [];
+      const rejections: any[] = [];
       for (const signal of darvasSignals) {
-        const authenticated = await DarvasAuthenticator.authenticate(signal);
+        const authenticated = await DarvasAuthenticator.authenticate(signal, multiplier);
         const reviewed = await GroupLeader.review(authenticated);
-        if (!reviewed.approved) continue;
-        const trade = await DarvasExecuter.execute(reviewed.signal.symbol, reviewed.signal.entry);
-        if (trade) {
-          CEOEA.reportTrade(trade);
-          darvasTrades.push(trade);
+        if (!reviewed.approved) {
+          rejections.push({ symbol: signal.symbol, reason: reviewed.reason });
+          continue;
+        }
+        try {
+          const trade = await DarvasExecuter.execute(reviewed.signal.symbol, reviewed.signal.entry);
+          if (trade) {
+            CEOEA.reportTrade(trade);
+            darvasTrades.push(trade);
+          }
+        } catch (e: any) {
+          rejections.push({ symbol: signal.symbol, reason: e.message || 'Broker execution failed' });
         }
       }
       
@@ -85,7 +95,7 @@ async function startServer() {
       
       res.json({
         success: true,
-        darvas: { candidates: darvasCandidates, signals: darvasSignals, executedTrades: darvasTrades },
+        darvas: { candidates: darvasCandidates, signals: darvasSignals, executedTrades: darvasTrades, rejections },
         rsTrend: { candidates: rsTrendCandidates },
         custom: { candidates: customCandidates },
         liveMetrics: combinedLiveMetrics
@@ -109,29 +119,35 @@ async function startServer() {
       const candidates = await DarvasScanner.scan(RAW_UNIVERSE, { volumeMultiplier: multiplier });
       
       // STEP 2: VALIDATOR
-      const { signals, liveMetrics } = await DarvasValidator.validate(candidates);
+      const { signals, liveMetrics } = await DarvasValidator.validate(candidates, multiplier);
       
       const executedTrades = [];
+      const rejections: any[] = [];
 
       for (const signal of signals) {
         // STEP 3: AUTHENTICATOR
-        const authenticated = await DarvasAuthenticator.authenticate(signal);
+        const authenticated = await DarvasAuthenticator.authenticate(signal, multiplier);
 
         // STEP 4: GROUP LEADER
         const reviewed = await GroupLeader.review(authenticated);
 
-        if (!reviewed.approved) continue;
+        if (!reviewed.approved) {
+          rejections.push({ symbol: signal.symbol, reason: reviewed.reason });
+          continue;
+        }
 
         // STEP 5: EXECUTER
-        const trade = await DarvasExecuter.execute(
-          reviewed.signal.symbol,
-          reviewed.signal.entry
-        );
-
-        // STEP 6: CEO EA REPORTING
-        if (trade) {
-          CEOEA.reportTrade(trade);
-          executedTrades.push(trade);
+        try {
+          const trade = await DarvasExecuter.execute(
+            reviewed.signal.symbol,
+            reviewed.signal.entry
+          );
+          if (trade) {
+            CEOEA.reportTrade(trade);
+            executedTrades.push(trade);
+          }
+        } catch (e: any) {
+          rejections.push({ symbol: signal.symbol, reason: e.message || 'Broker execution failed' });
         }
       }
 
@@ -141,6 +157,7 @@ async function startServer() {
         signals,
         liveMetrics,
         executedTrades,
+        rejections,
         config: { ...SETTINGS, VOLUME_MULTIPLIER: multiplier }
       });
 
@@ -245,18 +262,26 @@ async function startServer() {
       const result = await DarvasValidator.validate(candidates, multiplier);
       
       const executedTrades = [];
+      const rejections: any[] = [];
       for (const signal of result.signals) {
-        const authenticated = await DarvasAuthenticator.authenticate(signal);
+        const authenticated = await DarvasAuthenticator.authenticate(signal, multiplier);
         const reviewed = await GroupLeader.review(authenticated);
-        if (!reviewed.approved) continue;
-        const trade = await DarvasExecuter.execute(reviewed.signal.symbol, reviewed.signal.entry);
-        if (trade) {
-          CEOEA.reportTrade(trade);
-          executedTrades.push(trade);
+        if (!reviewed.approved) {
+          rejections.push({ symbol: signal.symbol, reason: reviewed.reason });
+          continue;
+        }
+        try {
+          const trade = await DarvasExecuter.execute(reviewed.signal.symbol, reviewed.signal.entry);
+          if (trade) {
+            CEOEA.reportTrade(trade);
+            executedTrades.push(trade);
+          }
+        } catch (e: any) {
+          rejections.push({ symbol: signal.symbol, reason: e.message || 'Broker execution failed' });
         }
       }
 
-      res.json({ success: true, ...result, executedTrades });
+      res.json({ success: true, ...result, executedTrades, rejections });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
     }
