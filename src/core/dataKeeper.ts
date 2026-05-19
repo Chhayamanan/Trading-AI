@@ -25,7 +25,7 @@ export class DataKeeper {
       data: currentCache?.data || {}
     };
 
-    const BATCH_SIZE = 25;
+    const BATCH_SIZE = 5; // Reduced from 25 to 5 to avoid Yahoo rate limits (429) on shared IPs like Railway
     for (let i = 0; i < uniqueSymbols.length; i += BATCH_SIZE) {
       const batch = uniqueSymbols.slice(i, i + BATCH_SIZE);
       await Promise.all(batch.map(async (symbol) => {
@@ -40,8 +40,8 @@ export class DataKeeper {
         }
       }));
       
-      // Small delay to be nice to Yahoo
-      await new Promise(resolve => setTimeout(resolve, 50));
+      // Larger delay to be nice to Yahoo API
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     // Save only once at the end to avoid massive I/O
