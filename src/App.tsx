@@ -269,7 +269,7 @@ export default function App() {
 
   const runSync = async () => {
     setIsSyncing(true);
-    addLog("Data Keeper Agent: Starting market synchronization...");
+    addLog("Data Keeper Agent: Starting background market synchronization...");
     try {
       const response = await fetch('/api/data-keeper/sync', { method: 'POST' });
       
@@ -280,8 +280,9 @@ export default function App() {
 
       const data = await response.json();
       if (data.success) {
-        addLog(`Data Keeper: Successfully synced universe at ${new Date(data.lastSync).toLocaleTimeString()}`);
-        setSyncStatus({ lastSync: data.lastSync, healthy: true });
+        addLog(`Data Keeper: Synchronization started in background. Please wait ~1-2 minutes for completion, then check status.`);
+        // We do not immediately set healthy to true since it runs in the background. But we'll leave lastSync.
+        setSyncStatus({ lastSync: data.lastSync, healthy: false });
       } else {
         addLog(`Data Keeper Error: ${data.error}`);
       }
@@ -342,6 +343,10 @@ export default function App() {
       }
     };
     checkSync();
+    
+    // Poll the background sync status every 10 seconds
+    const interval = setInterval(checkSync, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   return (

@@ -17,16 +17,19 @@ import { BacktestScanner } from "./groups/backtest/scanner";
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
 
   // Data Keeper Sync Endpoint
   app.post("/api/data-keeper/sync", async (req, res) => {
-    req.setTimeout(600000); // 10 mins
     try {
-      const result = await DataKeeper.fetchAndStore(MARKET_UNIVERSE);
-      res.json({ success: true, lastSync: result.lastSync });
+      // Start sync in background so Railway proxy doesn't timeout the HTTP request
+      DataKeeper.fetchAndStore(MARKET_UNIVERSE)
+        .then(() => console.log("Background sync finished successfully."))
+        .catch(e => console.error("Background sync failed:", e));
+
+      res.json({ success: true, message: "Synchronization started in background. This will take ~1-2 minutes. Please wait then refresh or perform scans.", lastSync: Date.now() });
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) });
     }
