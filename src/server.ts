@@ -23,21 +23,11 @@ async function startServer() {
   // Data Keeper Sync Endpoint
   app.post("/api/data-keeper/sync", async (req, res) => {
     req.setTimeout(600000); // 10 mins
-    res.setHeader('Content-Type', 'application/json');
-    // Send a space every 5 seconds to keep Railway load balancer from dropping the connection
-    const keepalive = setInterval(() => {
-      res.write(' ');
-    }, 5000);
-
     try {
       const result = await DataKeeper.fetchAndStore(MARKET_UNIVERSE);
-      clearInterval(keepalive);
-      res.write(JSON.stringify({ success: true, lastSync: result.lastSync }));
-      res.end();
+      res.json({ success: true, lastSync: result.lastSync });
     } catch (error) {
-      clearInterval(keepalive);
-      res.write(JSON.stringify({ success: false, error: String(error) }));
-      res.end();
+      res.status(500).json({ success: false, error: String(error) });
     }
   });
 

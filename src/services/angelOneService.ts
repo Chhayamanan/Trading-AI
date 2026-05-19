@@ -104,6 +104,80 @@ export class AngelOneService {
     }
   }
 
+  static async getCurrentPrices(symbols: string[]) {
+    if (!this.jwtToken) {
+      const authed = await this.authenticate();
+      if (!authed) {
+        console.warn("AngelOne auth failed, returning empty prices.");
+        return {};
+      }
+    }
+
+    const apiKey = process.env.ANGEL_API_KEY;
+    const map: Record<string, { price: number, volume: number }> = {};
+    const tokens: string[] = [];
+    const symbolToTradingMap: Record<string, string> = {};
+
+    for (const symbol of symbols) {
+      // Ignore indices for AngelOne, or map appropriately
+      if (symbol.startsWith('^')) continue; 
+      
+      const tradingSymbol = symbol.endsWith('.NS') ? symbol.replace('.NS', '-EQ') : `${symbol}-EQ`;
+      const token = await AngelOneTokenManager.getToken(tradingSymbol);
+      if (token) {
+        tokens.push(token);
+        symbolToTradingMap[token] = symbol;
+      }
+    }
+
+    if (tokens.length === 0) return map;
+
+    // API limits batch size to 50 tokens
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
+      const batchTokens = tokens.slice(i, i + BATCH_SIZE);
+      try {
+        const response = await axios.post(
+          `${BASE_URL}/rest/secure/angelbroking/market/v1/quote/`,
+          {
+            mode: 'FULL',
+            exchangeTokens: {
+              NSE: batchTokens
+            }
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${this.jwtToken}`,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-UserType': 'USER',
+              'X-SourceID': 'WEB',
+              'X-ClientLocalIP': getLocalIp(),
+              'X-ClientPublicIP': await getPublicIp(),
+              'X-MACAddress': getMacAddress(),
+              'X-PrivateKey': apiKey,
+            }
+          }
+        );
+
+        if (response.data.status && response.data.data && response.data.data.fetched) {
+          response.data.data.fetched.forEach((q: any) => {
+            const sym = symbolToTradingMap[q.symbolToken];
+            if (sym) {
+              map[sym.replace('.NS', '')] = {
+                price: q.ltp || 0,
+                volume: q.tradeVolume || q.tradedQty || q.volTraded || q.volume || 0
+              };
+            }
+          });
+        }
+      } catch (error: any) {
+        console.error("Angel One Market Quote Error:", error.response?.data || error.message);
+      }
+    }
+
+    return map;
+  }
   static async placeOrder(symbol: string, quantity: number = 1) {
     if (!this.jwtToken) {
       const authed = await this.authenticate();

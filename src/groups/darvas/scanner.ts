@@ -5,6 +5,7 @@ import { StockCandidate } from "../../models/stock";
 import { RSAgent } from "../../core/rsAgent";
 import { LARGE_CAP_STOCKS, MIDCAP_STOCKS, SMALLCAP_STOCKS, getBenchmarkIndex, MARKET_UNIVERSE } from "../../services/marketDataService";
 import { YahooService } from "../../services/yahooService";
+import { AngelOneService } from "../../services/angelOneService";
 
 export class DarvasScanner {
   static async scan(symbols: string[], options: { 
@@ -28,7 +29,11 @@ export class DarvasScanner {
 
     // Pre-fetch LIVE prices for all symbols in this scan
     LoggerService.log(`[SCANNER] Fetching live quotes for ${symbols.length} symbols...`);
-    const liveQuotes = await YahooService.getCurrentPrices(symbols);
+    const liveQuotes = await AngelOneService.getCurrentPrices(symbols);
+
+    if (Object.keys(liveQuotes).length === 0 && symbols.length > 0) {
+      LoggerService.log(`[SCANNER] CRITICAL WARNING: API returned 0 live quotes.`);
+    }
 
     // Pre-fetch Nifty 50 data for comparison (Historical)
     const niftyData = await DataKeeper.getData("^NSEI");

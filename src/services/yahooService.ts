@@ -57,24 +57,6 @@ export class YahooService {
     return this.getHistoricalData(symbol, true);
   }
 
-  static async getIntradayData(symbol: string, days = 59) {
-    const ticker = (symbol.includes(".") || symbol.startsWith("^")) ? symbol : `${symbol}.NS`;
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-
-    try {
-      // @ts-ignore - yahoo-finance2 types might be outdated for chart
-      const result = await yahooFinance.chart(ticker, {
-        period1: startDate,
-        interval: "5m"
-      });
-      return result.quotes || [];
-    } catch (e: any) {
-      console.warn(`[YAHOO] Intraday fetch failed for ${ticker}: ${e.message}`);
-      return [];
-    }
-  }
-
   static async getCurrentPrices(symbols: string[]) {
     const tickers = symbols.map(s => (s.includes(".") || s.startsWith("^")) ? s : `${s}.NS`);
     
