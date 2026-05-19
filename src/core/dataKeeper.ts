@@ -34,7 +34,7 @@ export class DataKeeper {
       data: currentIntraday?.data || {}
     };
 
-    const BATCH_SIZE = 5;
+    const BATCH_SIZE = 25;
     for (let i = 0; i < uniqueSymbols.length; i += BATCH_SIZE) {
       const batch = uniqueSymbols.slice(i, i + BATCH_SIZE);
       await Promise.all(batch.map(async (symbol) => {
@@ -54,7 +54,7 @@ export class DataKeeper {
       }));
       
       // Small delay to be nice to Yahoo
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
 
     // Save only once at the end to avoid massive I/O

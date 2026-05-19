@@ -1,4 +1,8 @@
-import yahooFinance from "yahoo-finance2";
+import yf from "yahoo-finance2";
+
+const YahooFinanceClass = (yf as any).default || yf;
+const yahooFinance = typeof YahooFinanceClass === 'function' ? new (YahooFinanceClass as any)() : yf;
+
 
 export class YahooService {
   static async getHistoricalData(symbol: string, excludeToday = false) {
