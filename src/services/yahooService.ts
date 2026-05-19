@@ -1,7 +1,7 @@
 import yf from "yahoo-finance2";
 
 const YahooFinanceClass = (yf as any).default || yf;
-const yahooFinance = typeof YahooFinanceClass === 'function' ? new (YahooFinanceClass as any)() : yf;
+const yahooFinance = typeof YahooFinanceClass === 'function' ? new (YahooFinanceClass as any)({ suppressNotices: ['yahooSurvey'] }) : yf;
 
 
 export class YahooService {
@@ -59,23 +59,31 @@ export class YahooService {
 
   static async getCurrentPrices(symbols: string[]) {
     const tickers = symbols.map(s => (s.includes(".") || s.startsWith("^")) ? s : `${s}.NS`);
+    const map: Record<string, { price: number, volume: number }> = {};
     
+    // Batch quotes to avoid Yahoo rate limits or blocking
+    const BATCH_SIZE = 50;
     try {
-      const quotes: any[] = await yahooFinance.quote(tickers, {}, { validateResult: false });
-      const map: Record<string, { price: number, volume: number }> = {};
-      
-      quotes.forEach(q => {
-        const sym = q.symbol.replace(".NS", "").replace(".BO", "");
-        map[sym] = {
-          price: q.regularMarketPrice || q.price || 0,
-          volume: q.regularMarketVolume || q.volume || 0
-        };
-      });
-      
+      for (let i = 0; i < tickers.length; i += BATCH_SIZE) {
+        const batchTickers = tickers.slice(i, i + BATCH_SIZE);
+        const quotes: any[] = await yahooFinance.quote(batchTickers, {}, { validateResult: false });
+        
+        quotes.forEach(q => {
+          const sym = q.symbol.replace(".NS", "").replace(".BO", "");
+          map[sym] = {
+            price: q.regularMarketPrice || q.price || 0,
+            volume: q.regularMarketVolume || q.volume || 0
+          };
+        });
+        
+        if (i + BATCH_SIZE < tickers.length) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
       return map;
     } catch (e: any) {
       console.error(`[YAHOO] Batch quote failed: ${e.message}`);
-      return {};
+      return map;
     }
   }
 
