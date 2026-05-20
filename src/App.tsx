@@ -181,7 +181,6 @@ export default function App() {
         setMstockAuthState('logged_in');
         setOtpInput('');
         addLog("m.Stock Login successful! Dynamic Session Generated.");
-        fetchPortfolioData(false);
       } else {
         setMstockAuthError(data.error || "Login Failed");
         addLog(`Login Failed: ${data.error}`);

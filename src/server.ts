@@ -63,8 +63,8 @@ async function startServer() {
 
   app.get("/api/portfolio", async (req, res) => {
     try {
-      const portfolio = await CEOPA.getPortfolio();
-      res.json({ success: true, portfolio });
+      // Disabled per user request
+      res.json({ success: true, portfolio: null });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }

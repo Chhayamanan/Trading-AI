@@ -138,7 +138,7 @@ export class MstockService {
           headers: {
             'X-Mirae-Version': '1',
             'X-PrivateKey': apiKey,
-            'Authorization': `token ${sessionToken}`,
+            'Authorization': `token ${apiKey}:${sessionToken}`,
             'Content-Type': 'application/json'
           }
         }
