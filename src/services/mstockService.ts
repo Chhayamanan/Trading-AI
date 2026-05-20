@@ -97,10 +97,11 @@ export class MstockService {
   }
 
   static async placeOrder(symbol: string, quantity: number = 1) {
-    const accessToken = process.env.MSTOCK_API_KEY;
-    const apiSecret = process.env.MSTOCK_API_SECRET;
-    if (!accessToken) {
-      throw new Error("Mstock Auth Failed. Cannot trade.");
+    const apiKey = process.env.MSTOCK_API_KEY;
+    const sessionToken = this.cachedToken;
+    
+    if (!apiKey || !sessionToken) {
+      throw new Error("Mstock Auth Failed. Missing API Key or session is not active. Cannot trade.");
     }
     
     const MSTOCK_BASE_URL = 'https://api.mstock.trade/openapi/typeb/v1';
@@ -115,12 +116,13 @@ export class MstockService {
       };
 
       const response = await axios.post(
-        `${MSTOCK_BASE_URL}/orders`, 
+        `${MSTOCK_BASE_URL}/placeOrder`, 
         orderPayload,
         {
           headers: {
             'X-Mirae-Version': '1',
-            'Authorization': `token ${apiSecret}:${accessToken}`,
+            'X-PrivateKey': apiKey,
+            'Authorization': `Bearer ${sessionToken}`,
             'Content-Type': 'application/json'
           }
         }
