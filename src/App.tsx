@@ -289,24 +289,24 @@ export default function App() {
     };
   }, [activeScan, isMonitoring, volMultiplier]);
 
-  // Effect 2: Independent 5-second Portfolio Agent Polling loop
-  React.useEffect(() => {
-    fetchPortfolioData(false);
+  // Effect 2: Independent 5-second Portfolio Agent Polling loop (Disabled per user request)
+  // React.useEffect(() => {
+  //   fetchPortfolioData(false);
 
-    let portfolioInterval: NodeJS.Timeout;
-    if (isMonitoring) {
-      addLog("Portfolio Agent (CEOPA): Online and polling every 5 seconds.");
-      portfolioInterval = setInterval(() => {
-        fetchPortfolioData(true);
-      }, 5000);
-    }
-    return () => {
-      if (portfolioInterval) {
-        clearInterval(portfolioInterval);
-        addLog("Portfolio Agent (CEOPA): Polling paused.");
-      }
-    };
-  }, [isMonitoring]);
+  //   let portfolioInterval: NodeJS.Timeout;
+  //   if (isMonitoring) {
+  //     addLog("Portfolio Agent (CEOPA): Online and polling every 5 seconds.");
+  //     portfolioInterval = setInterval(() => {
+  //       fetchPortfolioData(true);
+  //     }, 5000);
+  //   }
+  //   return () => {
+  //     if (portfolioInterval) {
+  //       clearInterval(portfolioInterval);
+  //       addLog("Portfolio Agent (CEOPA): Polling paused.");
+  //     }
+  //   };
+  // }, [isMonitoring]);
 
   // ISOLATED SCAN 1: Darvas Box Scanner (Main Monitoring Scan)
   const runDarvasScan = async () => {
@@ -730,93 +730,8 @@ export default function App() {
               </div>
             </section>
 
-            {mstockAuthState !== 'logged_in' && (
-              <section className="bg-[#0f0f12] border border-zinc-800 border-dashed rounded-2xl overflow-hidden shadow-sm p-5 space-y-4">
-                <div className="flex items-center gap-3">
-                  <ShieldCheck className="w-5 h-5 text-indigo-400" />
-                  <span className="text-xs font-bold uppercase tracking-[0.1em] text-zinc-400">Broker Authentication</span>
-                </div>
-                
-                {mstockAuthState === 'idle' && (
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                       <p className="text-[10px] text-zinc-500 max-w-[200px]">
-                         Authorize Portfolio Agent with your loaded m.Stock API Key and TOTP Secret.
-                       </p>
-                       <button 
-                         onClick={handleLoginSubmit}
-                         className="px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/20 text-xs font-bold uppercase tracking-widest rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-                       >
-                         Connect
-                       </button>
-                    </div>
-                    {mstockAuthError && (
-                      <p className="text-[10px] text-rose-500 bg-rose-500/10 border border-rose-500/20 p-2 rounded-md">
-                        {mstockAuthError}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </section>
-            )}
-
-            <section className="bg-[#0f0f12] border border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
-              <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/40">
-                <div className="flex items-center gap-3">
-                  <TrendingUp className="w-5 h-5 text-indigo-400" />
-                  <span className="text-xs font-bold uppercase tracking-[0.1em] text-zinc-400">Portfolio Agent (CEOPA)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {portfolio?.summary?.isLiveAccount ? (
-                    <span className="text-[8px] sm:text-[9px] px-1.5 py-0.5 font-medium uppercase tracking-wider rounded-md border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">m.Stock Live</span>
-                  ) : (
-                    <span className="text-[8px] sm:text-[9px] px-1.5 py-0.5 font-medium uppercase tracking-wider rounded-md border border-zinc-800 bg-zinc-900/60 text-zinc-500">Simulated</span>
-                  )}
-                  <span className={`h-1.5 w-1.5 rounded-full ${isMonitoring ? 'bg-indigo-500 animate-pulse' : 'bg-zinc-600'} shadow-[0_0_10px_rgba(99,102,241,0.5)]`} />
-                  <span className="text-[9px] uppercase font-bold text-zinc-500">{isMonitoring ? 'active (5s)' : 'stalled'}</span>
-                </div>
-              </div>
-              <div className="p-6 space-y-4">
-                {portfolio ? (
-                  <>
-                    <div className="grid grid-cols-2 gap-3 pb-3 border-b border-zinc-800/60">
-                      <div>
-                        <div className="text-[9px] text-zinc-500 uppercase font-black tracking-widest mb-0.5">Total Valuation</div>
-                        <div className="text-sm font-mono font-bold text-white">₹{(portfolio?.summary?.totalValue ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[9px] text-zinc-500 uppercase font-black tracking-widest mb-0.5">Total P&L</div>
-                        <div className={`text-sm font-mono font-bold ${(portfolio?.summary?.totalPnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {(portfolio?.summary?.totalPnl ?? 0) >= 0 ? '+' : ''}₹{(portfolio?.summary?.totalPnl ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 1 })}
-                          <span className="text-[10px] ml-1">({(portfolio?.summary?.pnlPercent ?? 0) >= 0 ? '+' : ''}{portfolio?.summary?.pnlPercent ?? 0}%)</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 max-h-[160px] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800 pr-1">
-                      {portfolio.holdings.map((h: any, idx: number) => (
-                        <div key={idx} className="flex justify-between items-center bg-zinc-900/40 p-2.5 rounded-xl border border-zinc-800/40 text-xs hover:border-zinc-700 transition-all">
-                          <div>
-                            <div className="font-bold text-zinc-200">{h.symbol}</div>
-                            <div className="text-[9px] text-zinc-500 font-mono">Qty: {h.qty} • Avg: ₹{h.avgPrice}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-mono text-zinc-300">₹{h.currentPrice.toFixed(2)}</div>
-                            <div className={`text-[10px] font-mono font-bold ${h.pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                              {h.pnl >= 0 ? '+' : ''}₹{h.pnl.toFixed(1)}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-center py-4 text-zinc-500 text-xs italic">
-                    {isPortfolioLoading ? "Querying portfolio stats..." : "Activate scanning to deploy Portfolio Agent."}
-                  </div>
-                )}
-              </div>
-            </section>
+            {/* m.Stock Broker Auth Removed per user request */}
+            {/* Portfolio Agent Removed per user request */}
 
             <section className="bg-[#0f0f12] border border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
               <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/40">

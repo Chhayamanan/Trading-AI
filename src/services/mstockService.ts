@@ -73,7 +73,12 @@ export class MstockService {
     if (this.cachedToken) {
       return this.cachedToken;
     }
-    throw new Error("Mstock is not authenticated. Please click the broker login button to start the session.");
+    console.log("[MSTOCK SERVICE] No cached token found in getMstockJwtToken, attempting to auto process...");
+    try {
+        return await this.autoLoginWithTOTP();
+    } catch (e: any) {
+        throw new Error("Mstock is not authenticated. Login dynamically failed: " + e.message);
+    }
   }
 
   static async authenticate() {
@@ -98,7 +103,13 @@ export class MstockService {
 
   static async placeOrder(symbol: string, quantity: number = 1, price: number = 0) {
     const apiKey = process.env.MSTOCK_API_KEY;
-    const sessionToken = this.cachedToken;
+    
+    let sessionToken = null;
+    try {
+        sessionToken = await this.getMstockJwtToken();
+    } catch (e: any) {
+        throw new Error("Mstock Auth Failed: " + e.message);
+    }
     
     if (!apiKey || !sessionToken) {
       throw new Error("Mstock Auth Failed. Missing API Key or session is not active. Cannot trade.");
