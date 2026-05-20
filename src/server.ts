@@ -2,6 +2,7 @@
 process.env.NO_PROXY = "*";
 process.env.no_proxy = "*";
 
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -14,6 +15,7 @@ import { DarvasExecuter } from "./groups/darvas/executer";
 import { CEOEA } from "./core/ceoEA";
 import { SETTINGS } from "./config/settings";
 import { MstockService } from "./services/mstockService";
+import { CEOPA } from "./core/ceoPA";
 
 import { DataKeeper } from "./core/dataKeeper";
 import { VolumeSpikeScanner } from "./groups/darvas/volumeSpikeScanner";
@@ -24,6 +26,16 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
+
+  // Mstock API
+  app.post("/api/mstock/login", async (req, res) => {
+    try {
+      const token = await MstockService.autoLoginWithTOTP();
+      res.json({ success: true, token });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
 
   // Data Keeper Sync Endpoint
   app.post("/api/data-keeper/sync", async (req, res) => {
@@ -44,6 +56,15 @@ async function startServer() {
       const lastSync = await DataKeeper.getLastSyncTime();
       const healthy = await DataKeeper.isCacheHealthy();
       res.json({ lastSync, healthy });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.get("/api/portfolio", async (req, res) => {
+    try {
+      const portfolio = await CEOPA.getPortfolio();
+      res.json({ success: true, portfolio });
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }

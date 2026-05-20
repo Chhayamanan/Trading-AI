@@ -2,5 +2,5 @@
   "name": "Institutional Trading AI",
   "description": "Multi-agent trading system with Darvas Box strategy and automated reporting.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

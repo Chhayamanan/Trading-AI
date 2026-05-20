@@ -32,8 +32,11 @@ export default function App() {
   const [volumeFilter, setVolumeFilter] = useState<number>(0);
   const [volMultiplier, setVolMultiplier] = useState<number>(4);
   const [spikeFactor, setSpikeFactor] = useState<number>(3);
-  const [activeTab, setActiveTab] = useState<'darvas' | 'rsTrend' | 'custom'>('darvas');
-  const [activeScan, setActiveScan] = useState<'all' | null>(null);
+  const [activeTab, setActiveTab] = useState<'darvas' | 'rsTrend' | 'custom' | 'spike' | 'backtest'>('darvas');
+  const [activeScan, setActiveScan] = useState<'darvas' | 'all' | null>(null);
+  const [countdown, setCountdown] = useState<number>(300);
+  const [portfolio, setPortfolio] = useState<any>(null);
+  const [isPortfolioLoading, setIsPortfolioLoading] = useState<boolean>(false);
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [liveMetrics, setLiveMetrics] = useState<Record<string, { price: number, volume: number, ratio: number, dailyChange: number, distFromHigh: number }>>({});
   const [maxDistFromHigh, setMaxDistFromHigh] = useState<number>(20); // 20% by default
@@ -42,6 +45,9 @@ export default function App() {
   const [selectedStock, setSelectedStock] = useState<string | null>(null);
   const [news, setNews] = useState<{ text: string, links: { uri: string, title: string }[] } | null>(null);
   const [isFetchingNews, setIsFetchingNews] = useState(false);
+  const [otpInput, setOtpInput] = useState('');
+  const [mstockAuthState, setMstockAuthState] = useState<'idle' | 'awaiting_otp' | 'logged_in'>('idle');
+  const [mstockAuthError, setMstockAuthError] = useState<string | null>(null);
 
   const exportToCSV = () => {
     if (!results) return;
@@ -49,18 +55,35 @@ export default function App() {
     let data: any[] = [];
     let filename = `scan_results_${new Date().toISOString().split('T')[0]}.csv`;
 
-    const activeResults = activeTab === 'darvas' ? results.darvas : activeTab === 'rsTrend' ? results.rsTrend : results.custom;
-    
-    if (activeResults?.candidates) {
-      data = activeResults.candidates.map((c: any) => ({
-        Symbol: c.symbol,
-        Price: liveMetrics[c.symbol]?.price || c.currentPrice,
-        Volume: liveMetrics[c.symbol]?.volume || c.currentVolume,
-        VolRatio: (liveMetrics[c.symbol]?.ratio || c.volumeRatio || 0).toFixed(2),
-        BoxHigh: c.boxHigh,
-        BoxLow: c.boxLow,
-        Cap: c.marketCap,
-        DayChange: ((liveMetrics[c.symbol]?.dailyChange || c.dailyChange) || 0).toFixed(2) + '%'
+    if (activeTab === 'darvas' || activeTab === 'rsTrend' || activeTab === 'custom') {
+      const activeResults = activeTab === 'darvas' ? results.darvas : activeTab === 'rsTrend' ? results.rsTrend : results.custom;
+      if (activeResults?.candidates) {
+        data = activeResults.candidates.map((c: any) => ({
+          Symbol: c.symbol,
+          Price: liveMetrics[c.symbol]?.price || c.currentPrice,
+          Volume: liveMetrics[c.symbol]?.volume || c.currentVolume,
+          VolRatio: (liveMetrics[c.symbol]?.ratio || c.volumeRatio || 0).toFixed(2),
+          BoxHigh: c.boxHigh,
+          BoxLow: c.boxLow,
+          Cap: c.marketCap,
+          DayChange: ((liveMetrics[c.symbol]?.dailyChange || c.dailyChange) || 0).toFixed(2) + '%'
+        }));
+      }
+    } else if (activeTab === 'spike' && results.spikes) {
+      data = results.spikes.map((s: any) => ({
+        Symbol: s.symbol,
+        Price: s.currentPrice,
+        Volume: s.spikeVolume,
+        VolRatio: s.ratio.toFixed(2),
+        DayChange: s.priceChangePercent.toFixed(2) + '%',
+        Time: s.time
+      }));
+    } else if (activeTab === 'backtest' && results.backtest) {
+      data = results.backtest.map((b: any) => ({
+        Symbol: b.symbol,
+        TotalTrades: b.totalTrades,
+        WinRate: b.winRate.toFixed(2) + '%',
+        TotalPnL: b.totalPnl
       }));
     }
 
@@ -145,79 +168,157 @@ export default function App() {
 
   const isFetchingRef = React.useRef(false);
 
-  React.useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (activeScan && isMonitoring) {
-      addLog(`Live Monitoring Link established (${activeScan} mode)`);
-      interval = setInterval(async () => {
-        if (isFetchingRef.current) return;
-        isFetchingRef.current = true;
-        try {
-          const excludeSymbols = Array.from(permanentlyRejectedRef.current);
-          const response = await fetch(`/api/run-all-scans`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              multiplier: volMultiplier,
-              excludeSymbols,
-              customFilters: {
-                volMult: volMultiplier,
-                distFromHigh: maxDistFromHigh,
-                dailyChangeMin,
-                dailyChangeMax
-              }
-            })
+  const handleLoginSubmit = async () => {
+    try {
+      setMstockAuthError(null);
+      
+      addLog("Connecting to m.Stock API Gateway via Type A JWT...");
+      const response = await fetch('/api/mstock/login', { 
+        method: 'POST'
+      });
+      const data = await response.json();
+      if (data.success) {
+        setMstockAuthState('logged_in');
+        setOtpInput('');
+        addLog("m.Stock Login successful! Dynamic Session Generated.");
+        fetchPortfolioData(false);
+      } else {
+        setMstockAuthError(data.error || "Login Failed");
+        addLog(`Login Failed: ${data.error}`);
+      }
+    } catch (e: any) {
+      setMstockAuthError(e.message || "Network Error");
+      addLog(`Login Error: ${e.message}`);
+    }
+  };
+
+  // Fetch live portfolio statistics
+  const fetchPortfolioData = async (silent = false) => {
+    if (!silent) setIsPortfolioLoading(true);
+    try {
+      const response = await fetch('/api/portfolio');
+      const data = await response.json();
+      if (data.success) {
+        setPortfolio(data.portfolio);
+      }
+    } catch (err) {
+      console.error("[PORTFOLIO FETCH ERROR]", err);
+    } finally {
+      if (!silent) setIsPortfolioLoading(false);
+    }
+  };
+
+  // Automated 5-minute Darvas Scanner callback
+  const triggerDarvasMonitoringScan = async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    addLog(`Automated Darvas Box scanning triggered...`);
+    try {
+      const response = await fetch(`/api/run-darvas-system?multiplier=${volMultiplier}`);
+      const data = await response.json();
+      if (data.success) {
+        addLog(`Auto-scan: ${data.candidates.length} candidates, ${data.signals.length} signals detected.`);
+        if (data.rejections && data.rejections.length > 0) {
+          data.rejections.forEach((rej: any) => {
+            const key = rej.symbol;
+            if (!loggedErrorsRef.current.has(key)) {
+              addLog(`${rej.symbol} Validation Failed: ${rej.reason}`);
+              loggedErrorsRef.current.add(key);
+            }
           });
-          const data = await response.json();
-          if (data.success) {
-            if (data.darvas.rejections && data.darvas.rejections.length > 0) {
-              data.darvas.rejections.forEach((rej: any) => {
-                const key = rej.symbol;
-                if (!loggedErrorsRef.current.has(key)) {
-                  addLog(`${rej.symbol} Validation Failed: ${rej.reason}`);
-                  loggedErrorsRef.current.add(key);
-                }
-              });
-            }
-            if (data.darvas.signals && data.darvas.signals.length > 0) {
-              const prevTrades = resultsRef.current?.darvas?.executedTrades || [];
-              const newTrades = data.darvas.executedTrades || [];
-              const combinedTrades = [...prevTrades];
-              newTrades.forEach((newT: any) => {
-                if (!combinedTrades.some(t => t.symbol === newT.symbol)) {
-                  combinedTrades.push(newT);
-                  addLog(`TRADE EXECUTED: ${newT.symbol} at ${newT.buyPrice}`);
-                }
-              });
-              data.darvas.executedTrades = combinedTrades;
-            }
-            setResults(data);
-            if (data.liveMetrics) {
-              setLiveMetrics(data.liveMetrics);
-            }
-          }
-        } catch (e) {
-          console.error("Monitor Error:", e);
-        } finally {
-          isFetchingRef.current = false;
         }
+        if (data.signals && data.signals.length > 0) {
+          const prevTrades = resultsRef.current?.darvas?.executedTrades || [];
+          const newTrades = data.executedTrades || [];
+          const combinedTrades = [...prevTrades];
+          newTrades.forEach((newT: any) => {
+            if (!combinedTrades.some(t => t.symbol === newT.symbol)) {
+              combinedTrades.push(newT);
+              addLog(`TRADE EXECUTED: ${newT.symbol} at ₹${newT.entry}`);
+            }
+          });
+          data.executedTrades = combinedTrades;
+        }
+
+        const mappedResults = {
+          success: true,
+          darvas: {
+            candidates: data.candidates || [],
+            signals: data.signals || [],
+            executedTrades: data.executedTrades || [],
+            rejections: data.rejections || []
+          },
+          rsTrend: resultsRef.current?.rsTrend || { candidates: [] },
+          custom: resultsRef.current?.custom || { candidates: [] },
+          spikes: resultsRef.current?.spikes || [],
+          backtest: resultsRef.current?.backtest || null,
+          liveMetrics: { ...(resultsRef.current?.liveMetrics || {}), ...(data.liveMetrics || {}) }
+        };
+
+        setResults(mappedResults);
+        if (data.liveMetrics) {
+          setLiveMetrics(prev => ({ ...prev, ...data.liveMetrics }));
+        }
+      }
+    } catch (e) {
+      console.error("Monitor Error:", e);
+      addLog(`Auto-scan Error: ${e}`);
+    } finally {
+      isFetchingRef.current = false;
+    }
+  };
+
+  // Effect 1: 5-minute Autoclose / Polling Countdown loop for Darvas Scanner
+  React.useEffect(() => {
+    let countdownInterval: NodeJS.Timeout;
+    if (activeScan === 'darvas' && isMonitoring) {
+      addLog(`Live Darvas Monitoring established (Auto-scanning every 5 minutes)`);
+      setCountdown(300);
+      countdownInterval = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            triggerDarvasMonitoringScan();
+            return 300;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (countdownInterval) clearInterval(countdownInterval);
+    };
+  }, [activeScan, isMonitoring, volMultiplier]);
+
+  // Effect 2: Independent 5-second Portfolio Agent Polling loop
+  React.useEffect(() => {
+    fetchPortfolioData(false);
+
+    let portfolioInterval: NodeJS.Timeout;
+    if (isMonitoring) {
+      addLog("Portfolio Agent (CEOPA): Online and polling every 5 seconds.");
+      portfolioInterval = setInterval(() => {
+        fetchPortfolioData(true);
       }, 5000);
     }
     return () => {
-      if (interval) clearInterval(interval);
+      if (portfolioInterval) {
+        clearInterval(portfolioInterval);
+        addLog("Portfolio Agent (CEOPA): Polling paused.");
+      }
     };
-  }, [activeScan, isMonitoring, volMultiplier, maxDistFromHigh, dailyChangeMin, dailyChangeMax]);
+  }, [isMonitoring]);
 
-  const runAllScans = async () => {
+  // ISOLATED SCAN 1: Darvas Box Scanner (Main Monitoring Scan)
+  const runDarvasScan = async () => {
     setIsRunning(true);
     setResults(null);
     setLogs([]);
-    setActiveScan('all');
+    setActiveScan('darvas');
     setIsMonitoring(true);
-    addLog("Initializing Unified Scanning Engine...");
+    setCountdown(300);
+    addLog("Initializing ISO-1: Darvas Box Scanning Engine...");
 
     try {
-      // Check cache first
       const statusRes = await fetch('/api/data-keeper/status');
       const status = await statusRes.json();
       setSyncStatus(status);
@@ -226,33 +327,35 @@ export default function App() {
         addLog("WARNING: Market data is stale (over 12h). Run Data Keeper Sync!");
       }
 
-      addLog(`Step 1: Scanner agents deployed (Vol Multiplier: ${volMultiplier}x, Dist < ${maxDistFromHigh}%, Daily ${dailyChangeMin}% to ${dailyChangeMax}%)`);
-      const response = await fetch(`/api/run-all-scans`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          multiplier: volMultiplier,
-          customFilters: {
-            volMult: volMultiplier,
-            distFromHigh: maxDistFromHigh,
-            dailyChangeMin,
-            dailyChangeMax
-          }
-        })
-      });
+      addLog(`Step 1: Darvas Box Scanner deployed (Vol Multiplier: ${volMultiplier}x)`);
+      const response = await fetch(`/api/run-darvas-system?multiplier=${volMultiplier}`);
       const data = await response.json();
 
       if (data.success) {
-        addLog(`System completed.`);
-        addLog(`Darvas: ${data.darvas.candidates.length} candidates, ${data.darvas.signals.length} signals`);
-        if (data.darvas.rejections && data.darvas.rejections.length > 0) {
-          data.darvas.rejections.forEach((rej: any) => {
+        addLog(`Darvas Box scan completed.`);
+        addLog(`Darvas: ${data.candidates.length} candidates, ${data.signals.length} signals`);
+        if (data.rejections && data.rejections.length > 0) {
+          data.rejections.forEach((rej: any) => {
             addLog(`Blocked: ${rej.symbol} - ${rej.reason}`);
           });
         }
-        addLog(`RS Trend: ${data.rsTrend.candidates.length} candidates`);
-        addLog(`Custom: ${data.custom.candidates.length} candidates`);
-        setResults(data);
+        
+        const mappedResults = {
+          success: true,
+          darvas: {
+            candidates: data.candidates || [],
+            signals: data.signals || [],
+            executedTrades: data.executedTrades || [],
+            rejections: data.rejections || []
+          },
+          rsTrend: { candidates: [] },
+          custom: { candidates: [] },
+          spikes: [],
+          backtest: null,
+          liveMetrics: data.liveMetrics || {}
+        };
+
+        setResults(mappedResults);
         if (data.liveMetrics) {
           setLiveMetrics(data.liveMetrics);
         }
@@ -262,6 +365,143 @@ export default function App() {
     } catch (err) {
       addLog(`Network Error: ${err}`);
       console.error(err);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  // ISOLATED SCAN 2: RS Trend Scanner (Invididual Active)
+  const runRsTrendScan = async () => {
+    setIsRunning(true);
+    addLog("Deploying RS Trend Agent for isolated scanning...");
+    try {
+      const response = await fetch('/api/run-rs-trend-scan');
+      const data = await response.json();
+      if (data.success) {
+        addLog(`RS Trend isolation scan complete. Found ${data.candidates.length} candidates.`);
+        setResults(prev => {
+          const base = prev || { success: true };
+          return {
+            ...base,
+            success: true,
+            rsTrend: {
+              candidates: data.candidates || [],
+              signals: [],
+              executedTrades: [],
+              rejections: []
+            },
+            liveMetrics: { ...(base.liveMetrics || {}), ...(data.liveMetrics || {}) }
+          };
+        });
+        if (data.liveMetrics) {
+          setLiveMetrics(prev => ({ ...prev, ...data.liveMetrics }));
+        }
+      } else {
+        addLog(`RS Trend scan failed: ${data.error}`);
+      }
+    } catch (err) {
+      addLog(`RS Trend scan network error: ${err}`);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  // ISOLATED SCAN 3: Custom Slicers Scanner (Individual Active)
+  const runCustomFilterScan = async () => {
+    setIsRunning(true);
+    addLog(`Deploying Custom Filter Agent (High Dist: ${maxDistFromHigh}%, Daily Change: ${dailyChangeMin}% to ${dailyChangeMax}%)...`);
+    try {
+      const response = await fetch('/api/run-custom-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filters: {
+            volMult: volMultiplier,
+            distFromHigh: maxDistFromHigh,
+            dailyChangeMin,
+            dailyChangeMax
+          }
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        addLog(`Custom Filter isolation scan complete. Found ${data.candidates.length} candidates.`);
+        setResults(prev => {
+          const base = prev || { success: true };
+          return {
+            ...base,
+            success: true,
+            custom: {
+              candidates: data.candidates || [],
+              signals: [],
+              executedTrades: [],
+              rejections: []
+            },
+            liveMetrics: { ...(base.liveMetrics || {}), ...(data.liveMetrics || {}) }
+          };
+        });
+        if (data.liveMetrics) {
+          setLiveMetrics(prev => ({ ...prev, ...data.liveMetrics }));
+        }
+      } else {
+        addLog(`Custom scan failed: ${data.error}`);
+      }
+    } catch (err) {
+      addLog(`Custom scan network error: ${err}`);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  // ISOLATED SCAN 4: Volume Spike Detector (Individual Active)
+  const runVolumeSpikeScan = async () => {
+    setIsRunning(true);
+    addLog(`Deploying Volume Spike Agent (Spike Factor: ${spikeFactor}x)...`);
+    try {
+      const response = await fetch(`/api/run-volume-spike-scan?factor=${spikeFactor}`);
+      const data = await response.json();
+      if (data.success) {
+        addLog(`Volume Spike scan complete. Found ${data.spikes?.length || 0} active spikes.`);
+        setResults(prev => {
+          const base = prev || { success: true };
+          return {
+            ...base,
+            success: true,
+            spikes: data.spikes || []
+          };
+        });
+      } else {
+        addLog(`Volume Spike scan failed: ${data.error}`);
+      }
+    } catch (err) {
+      addLog(`Spike scan network error: ${err}`);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  // ISOLATED SCAN 5: Indices Benchmark Backtesting (Individual Active)
+  const runBenchmarkBacktest = async () => {
+    setIsRunning(true);
+    addLog("Deploying Backtest Agent to simulate index benchmark performance...");
+    try {
+      const response = await fetch('/api/run-backtest');
+      const data = await response.json();
+      if (data.success) {
+        addLog(`Index benchmark backtests complete.`);
+        setResults(prev => {
+          const base = prev || { success: true };
+          return {
+            ...base,
+            success: true,
+            backtest: data.results || null
+          };
+        });
+      } else {
+        addLog(`Backtest failed: ${data.error}`);
+      }
+    } catch (err) {
+      addLog(`Backtest network error: ${err}`);
     } finally {
       setIsRunning(false);
     }
@@ -364,10 +604,17 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            {isMonitoring && activeScan === 'darvas' && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-400 font-mono text-xs font-bold shadow-md shadow-indigo-500/5">
+                <Clock className="w-3.5 h-3.5" />
+                <span>Auto-Scan: {Math.floor(countdown / 60)}m {countdown % 60}s</span>
+              </div>
+            )}
+
             <motion.button
               whileHover={{ scale: 1.02, translateY: -1 }}
               whileTap={{ scale: 0.98 }}
-              onClick={runAllScans}
+              onClick={runDarvasScan}
               disabled={isRunning}
               className={`flex items-center gap-2.5 px-6 py-3 rounded-2xl font-bold transition-all ${
                 isRunning 
@@ -376,7 +623,7 @@ export default function App() {
               }`}
             >
               {isRunning ? <Activity className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 fill-current" />}
-              <span className="text-sm">Scan Market</span>
+              <span className="text-sm">Scan Darvas Box</span>
             </motion.button>
 
             {isMonitoring && (
@@ -483,6 +730,94 @@ export default function App() {
               </div>
             </section>
 
+            {mstockAuthState !== 'logged_in' && (
+              <section className="bg-[#0f0f12] border border-zinc-800 border-dashed rounded-2xl overflow-hidden shadow-sm p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className="w-5 h-5 text-indigo-400" />
+                  <span className="text-xs font-bold uppercase tracking-[0.1em] text-zinc-400">Broker Authentication</span>
+                </div>
+                
+                {mstockAuthState === 'idle' && (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                       <p className="text-[10px] text-zinc-500 max-w-[200px]">
+                         Authorize Portfolio Agent with your loaded m.Stock API Key and TOTP Secret.
+                       </p>
+                       <button 
+                         onClick={handleLoginSubmit}
+                         className="px-4 py-2 bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/20 text-xs font-bold uppercase tracking-widest rounded-lg transition-colors cursor-pointer whitespace-nowrap"
+                       >
+                         Connect
+                       </button>
+                    </div>
+                    {mstockAuthError && (
+                      <p className="text-[10px] text-rose-500 bg-rose-500/10 border border-rose-500/20 p-2 rounded-md">
+                        {mstockAuthError}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
+
+            <section className="bg-[#0f0f12] border border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
+              <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/40">
+                <div className="flex items-center gap-3">
+                  <TrendingUp className="w-5 h-5 text-indigo-400" />
+                  <span className="text-xs font-bold uppercase tracking-[0.1em] text-zinc-400">Portfolio Agent (CEOPA)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {portfolio?.summary?.isLiveAccount ? (
+                    <span className="text-[8px] sm:text-[9px] px-1.5 py-0.5 font-medium uppercase tracking-wider rounded-md border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">m.Stock Live</span>
+                  ) : (
+                    <span className="text-[8px] sm:text-[9px] px-1.5 py-0.5 font-medium uppercase tracking-wider rounded-md border border-zinc-800 bg-zinc-900/60 text-zinc-500">Simulated</span>
+                  )}
+                  <span className={`h-1.5 w-1.5 rounded-full ${isMonitoring ? 'bg-indigo-500 animate-pulse' : 'bg-zinc-600'} shadow-[0_0_10px_rgba(99,102,241,0.5)]`} />
+                  <span className="text-[9px] uppercase font-bold text-zinc-500">{isMonitoring ? 'active (5s)' : 'stalled'}</span>
+                </div>
+              </div>
+              <div className="p-6 space-y-4">
+                {portfolio ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 pb-3 border-b border-zinc-800/60">
+                      <div>
+                        <div className="text-[9px] text-zinc-500 uppercase font-black tracking-widest mb-0.5">Total Valuation</div>
+                        <div className="text-sm font-mono font-bold text-white">₹{(portfolio?.summary?.totalValue ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[9px] text-zinc-500 uppercase font-black tracking-widest mb-0.5">Total P&L</div>
+                        <div className={`text-sm font-mono font-bold ${(portfolio?.summary?.totalPnl ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {(portfolio?.summary?.totalPnl ?? 0) >= 0 ? '+' : ''}₹{(portfolio?.summary?.totalPnl ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 1 })}
+                          <span className="text-[10px] ml-1">({(portfolio?.summary?.pnlPercent ?? 0) >= 0 ? '+' : ''}{portfolio?.summary?.pnlPercent ?? 0}%)</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 max-h-[160px] overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800 pr-1">
+                      {portfolio.holdings.map((h: any, idx: number) => (
+                        <div key={idx} className="flex justify-between items-center bg-zinc-900/40 p-2.5 rounded-xl border border-zinc-800/40 text-xs hover:border-zinc-700 transition-all">
+                          <div>
+                            <div className="font-bold text-zinc-200">{h.symbol}</div>
+                            <div className="text-[9px] text-zinc-500 font-mono">Qty: {h.qty} • Avg: ₹{h.avgPrice}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-mono text-zinc-300">₹{h.currentPrice.toFixed(2)}</div>
+                            <div className={`text-[10px] font-mono font-bold ${h.pnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                              {h.pnl >= 0 ? '+' : ''}₹{h.pnl.toFixed(1)}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-4 text-zinc-500 text-xs italic">
+                    {isPortfolioLoading ? "Querying portfolio stats..." : "Activate scanning to deploy Portfolio Agent."}
+                  </div>
+                )}
+              </div>
+            </section>
+
             <section className="bg-[#0f0f12] border border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
               <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/40">
                 <div className="flex items-center gap-3">
@@ -546,278 +881,645 @@ export default function App() {
           {/* Right Column: Results */}
           <div className="lg:col-span-7">
             <AnimatePresence mode="wait">
-              {!results ? (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="bg-[#0f0f12]/50 border-2 border-dashed border-zinc-800 rounded-3xl h-full min-h-[600px] flex flex-col items-center justify-center text-zinc-600 text-center px-12"
-                >
-                  <div className="p-6 bg-zinc-900/50 rounded-full mb-6">
-                    <BarChart3 className="w-12 h-12" />
-                  </div>
-                  <h3 className="text-xl font-medium text-zinc-400 mb-2">No Market Data Available</h3>
-                  <p className="max-w-md">The multi-agent system hasn't been triggered yet. Click 'Scan Market' to start scanning the market.</p>
-                </motion.div>
-              ) : (
-                <motion.div 
-                  key={activeScan}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="space-y-6"
-                >
-                  {/* Tabs */}
-                  {results && (
-                    <div className="flex bg-zinc-900/50 border border-zinc-800 p-1 rounded-xl w-full">
-                      <button
-                        onClick={() => setActiveTab('darvas')}
-                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-bold transition-all ${
-                          activeTab === 'darvas'
-                            ? 'bg-indigo-600 text-white shadow-md'
-                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-                        }`}
-                      >
-                        Darvas Scan
-                      </button>
-                      <button
-                        onClick={() => setActiveTab('rsTrend')}
-                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-bold transition-all ${
-                          activeTab === 'rsTrend'
-                            ? 'bg-[#00ad6f] text-white shadow-md'
-                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-                        }`}
-                      >
-                        RS Trend Scan
-                      </button>
-                      <button
-                        onClick={() => setActiveTab('custom')}
-                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-bold transition-all ${
-                          activeTab === 'custom'
-                            ? 'bg-purple-600 text-white shadow-md'
-                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-                        }`}
-                      >
-                        Custom Scan
-                      </button>
-                    </div>
-                  )}
+              <motion.div 
+                key={activeTab}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="space-y-6"
+              >
+                {/* Tabs Selector (Always Available) */}
+                <div className="flex bg-zinc-900/50 border border-zinc-800 p-1 rounded-xl w-full select-none">
+                  <button
+                    onClick={() => setActiveTab('darvas')}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+                      activeTab === 'darvas'
+                        ? 'bg-indigo-600 text-white shadow-md'
+                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    }`}
+                  >
+                    Darvas Monitor
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('rsTrend')}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+                      activeTab === 'rsTrend'
+                        ? 'bg-[#00ad6f] text-white shadow-md'
+                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    }`}
+                  >
+                    RS Trend Scan
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('custom')}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+                      activeTab === 'custom'
+                        ? 'bg-purple-600 text-white shadow-md'
+                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    }`}
+                  >
+                    Custom Scan
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('spike')}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+                      activeTab === 'spike'
+                        ? 'bg-amber-600 text-white shadow-md'
+                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    }`}
+                  >
+                    Volume Spike
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('backtest')}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+                      activeTab === 'backtest'
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    }`}
+                  >
+                    Backtest Indices
+                  </button>
+                </div>
 
-                  {/* Filter Slicers & System Settings */}
-                  {activeScan !== 'backtest' && (
-                    <>
+                {/* 1. Darvas Monitor Tab */}
+                {activeTab === 'darvas' && (
+                  <div className="space-y-6">
+                    {/* Control Panel & Standalone Trigger */}
+                    <div className="bg-[#0f0f12] p-6 rounded-2xl border border-zinc-800/80 space-y-4 shadow-sm">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/60 pb-4 gap-3">
+                        <div>
+                          <h3 className="text-sm font-bold text-white uppercase tracking-wider">Darvas Box Agent Dashboard</h3>
+                          <p className="text-[10px] text-zinc-500">Tracks price ranges and breakout metrics. Relayed to Broker Agent.</p>
+                        </div>
+                        <button
+                          onClick={runDarvasScan}
+                          disabled={isRunning}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 rounded-xl font-bold text-xs text-white transition-all shadow-md shadow-indigo-600/20 active:scale-95 flex items-center justify-center gap-1.5 self-start sm:self-auto"
+                        >
+                          {isRunning && activeScan === 'darvas' ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                          Start Darvas Auto-Monitor (5m)
+                        </button>
+                      </div>
+                      
                       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                        {/* Price Position Filter */}
-                    <div className="bg-zinc-900/30 border border-zinc-800 p-4 rounded-2xl flex flex-col items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 w-full">
-                        <div className="p-2 bg-indigo-500/10 rounded-lg">
-                          <BarChart3 className="w-4 h-4 text-indigo-400" />
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex justify-between items-center">
-                            <h4 className="text-xs font-bold text-white uppercase tracking-wider">Price Position</h4>
-                            <div className="bg-indigo-500/20 px-2 py-0.5 rounded text-[10px] font-bold text-indigo-400">
-                              {positionFilter}%
+                        {/* Price Position */}
+                        <div className="bg-zinc-900/35 border border-zinc-805 p-4 rounded-xl flex flex-col items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 w-full">
+                            <div className="p-2 bg-indigo-500/10 rounded-lg">
+                              <BarChart3 className="w-4 h-4 text-indigo-400" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex justify-between items-center">
+                                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Price Position</h4>
+                                <div className="bg-indigo-500/20 px-2 py-0.5 rounded text-[10px] font-bold text-indigo-400">{positionFilter}%</div>
+                              </div>
+                              <p className="text-[9px] text-zinc-500">Filter: Above % of range</p>
                             </div>
                           </div>
-                          <p className="text-[9px] text-zinc-500">Filter: Above % of range</p>
+                          <input 
+                            type="range" 
+                            min="0" 
+                            max="100" 
+                            value={positionFilter}
+                            onChange={(e) => setPositionFilter(Number(e.target.value))}
+                            className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                          />
+                        </div>
+
+                        {/* Volume Filter */}
+                        <div className="bg-zinc-900/35 border border-zinc-805 p-4 rounded-xl flex flex-col items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 w-full">
+                            <div className="p-2 bg-emerald-500/10 rounded-lg">
+                              <Activity className="w-4 h-4 text-emerald-400" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex justify-between items-center">
+                                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Volume Filter</h4>
+                                <div className="bg-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold text-emerald-400">{volumeFilter}x</div>
+                              </div>
+                              <p className="text-[9px] text-zinc-500">Filter: Above avg volume</p>
+                            </div>
+                          </div>
+                          <input 
+                            type="range" 
+                            min="0" 
+                            max="10" 
+                            step="0.5"
+                            value={volumeFilter}
+                            onChange={(e) => setVolumeFilter(Number(e.target.value))}
+                            className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                          />
+                        </div>
+
+                        {/* System multiplier */}
+                        <div className="bg-indigo-600/10 border border-indigo-500/20 p-4 rounded-xl flex flex-col items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 w-full">
+                            <div className="p-2 bg-indigo-500 rounded-lg">
+                              <Zap className="w-4 h-4 text-white" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex justify-between items-center">
+                                <h4 className="text-xs font-bold text-indigo-100 uppercase tracking-wider">System Threshold</h4>
+                                <div className="bg-indigo-500 px-2 py-0.5 rounded text-[10px] font-bold text-white">{volMultiplier}x</div>
+                              </div>
+                              <p className="text-[9px] text-indigo-300/70">Engine: Volume Multiplier</p>
+                            </div>
+                          </div>
+                          <input 
+                            type="range" 
+                            min="0.5" 
+                            max="10" 
+                            step="0.1"
+                            value={volMultiplier}
+                            onChange={(e) => setVolMultiplier(Number(e.target.value))}
+                            className="w-full h-1.5 bg-indigo-900 rounded-lg appearance-none cursor-pointer accent-white"
+                          />
                         </div>
                       </div>
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="100" 
-                        value={positionFilter}
-                        onChange={(e) => setPositionFilter(Number(e.target.value))}
-                        className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                      />
                     </div>
 
-                    {/* Volume Filter */}
-                    <div className="bg-zinc-900/30 border border-zinc-800 p-4 rounded-2xl flex flex-col items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 w-full">
-                        <div className="p-2 bg-emerald-500/10 rounded-lg">
-                          <Activity className="w-4 h-4 text-emerald-400" />
+                    {results?.darvas ? (
+                      <>
+                        {/* Summary metrics header */}
+                        <div className="grid grid-cols-3 gap-6">
+                          <SummaryMetric 
+                            label="Scan Scope" 
+                            value={results.darvas.candidates?.length || 0} 
+                            sub="Assets" 
+                            onClick={() => setActiveDetail('scope')}
+                          />
+                          <SummaryMetric 
+                            label="Valid Signals" 
+                            value={results.darvas.signals?.length || 0} 
+                            sub="Opportunities" 
+                            onClick={() => setActiveDetail('signals')}
+                          />
+                          <SummaryMetric 
+                            label="Executions" 
+                            value={results.darvas.executedTrades?.length || 0} 
+                            sub="Orders" 
+                          />
                         </div>
-                        <div className="flex-1">
-                          <div className="flex justify-between items-center">
-                            <h4 className="text-xs font-bold text-white uppercase tracking-wider">Volume Filter</h4>
-                            <div className="bg-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold text-emerald-400">
-                              {volumeFilter}x
-                            </div>
-                          </div>
-                          <p className="text-[9px] text-zinc-500">Filter: Above avg volume</p>
-                        </div>
-                      </div>
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="10" 
-                        step="0.5"
-                        value={volumeFilter}
-                        onChange={(e) => setVolumeFilter(Number(e.target.value))}
-                        className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-                      />
-                    </div>
 
-                    {/* Engine Setting: Volume Multiplier */}
-                    <div className="bg-indigo-600/10 border border-indigo-500/30 p-4 rounded-2xl flex flex-col items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 w-full">
-                        <div className="p-2 bg-indigo-500 rounded-lg">
-                          <Zap className="w-4 h-4 text-white" />
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex justify-between items-center">
-                            <h4 className="text-xs font-bold text-indigo-100 uppercase tracking-wider">
-                              System Threshold
-                            </h4>
-                            <div className="bg-indigo-500 px-2 py-0.5 rounded text-[10px] font-bold text-white">
-                              {volMultiplier}x
+                        {/* Executions log */}
+                        {results.darvas.executedTrades?.length > 0 && (
+                          <section>
+                            <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-4 px-1">Recent Executions</h3>
+                            <div className="space-y-3">
+                              {results.darvas.executedTrades.map((trade: any, i: number) => (
+                                <TradeCard key={i} trade={trade} />
+                              ))}
                             </div>
-                          </div>
-                          <p className="text-[9px] text-indigo-300/70">
-                            Engine: Volume Multiplier
-                          </p>
-                        </div>
+                          </section>
+                        )}
+
+                        {/* Pipeline grid */}
+                        <section>
+                          <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-4 px-1">Candidate Pipeline (Darvas)</h3>
+                          {results.darvas.candidates?.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {results.darvas.candidates
+                                ?.filter((c: any) => {
+                                  const pos = ((c.currentPrice - c.boxLow) / (c.boxHigh - c.boxLow)) * 100;
+                                  return pos >= positionFilter && c.volumeRatio >= volumeFilter;
+                                })
+                                .map((c: any, i: number) => (
+                                  <CandidateCard key={i} candidate={c} live={liveMetrics[c.symbol]} onClick={() => onCompanyClick(c.symbol)} />
+                                ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-zinc-500 italic">No assets qualified for Darvas criteria.</div>
+                          )}
+                        </section>
+                      </>
+                    ) : (
+                      <div className="bg-[#0f0f12]/30 border-2 border-dashed border-zinc-800 rounded-3xl p-16 text-center text-zinc-500">
+                        <h4 className="text-sm font-bold text-zinc-400 mb-1">Darvas Monitor Idle</h4>
+                        <p className="text-xs max-w-xs mx-auto mb-4 text-zinc-600">Start the auto-monitor above to begin collecting breakout trades and plotting box candidates.</p>
                       </div>
-                      <input 
-                        type="range" 
-                        min="0.5" 
-                        max="10" 
-                        step="0.1"
-                        value={volMultiplier}
-                        onChange={(e) => setVolMultiplier(Number(e.target.value))}
-                        className="w-full h-1.5 bg-indigo-900 rounded-lg appearance-none cursor-pointer accent-white"
-                      />
-                    </div>
+                    )}
                   </div>
+                )}
 
-                  {activeTab === 'custom' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      {/* Dist From High */}
-                      <div className="bg-zinc-900/30 border border-zinc-800 p-4 rounded-2xl flex flex-col items-center justify-between gap-3">
-                        <div className="flex items-center gap-3 w-full">
-                          <div className="p-2 bg-purple-500/10 rounded-lg">
-                            <TrendingUp className="w-4 h-4 text-purple-400" />
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex justify-between items-center">
-                              <h4 className="text-xs font-bold text-white uppercase tracking-wider">Dist From 90D High</h4>
-                              <div className="bg-purple-500/20 px-2 py-0.5 rounded text-[10px] font-bold text-purple-400">
-                                {maxDistFromHigh}%
-                              </div>
-                            </div>
-                            <p className="text-[9px] text-zinc-500">Filter: Max % off high</p>
-                          </div>
+                {/* 2. RS Trend Tab */}
+                {activeTab === 'rsTrend' && (
+                  <div className="space-y-6">
+                    <div className="bg-[#0f0f12] p-6 rounded-2xl border border-zinc-800/80 space-y-4 shadow-sm">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/60 pb-4 gap-3">
+                        <div>
+                          <h3 className="text-sm font-bold text-white uppercase tracking-wider">Relative Strength Trend Scanner</h3>
+                          <p className="text-[10px] text-zinc-500">Compares asset performance indices relative to broad market benchmarks over 10D-90D.</p>
                         </div>
-                        <input 
-                          type="range" 
-                          min="0" 
-                          max="100" 
-                          step="1"
-                          value={maxDistFromHigh}
-                          onChange={(e) => setMaxDistFromHigh(Number(e.target.value))}
-                          className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                        />
+                        <button
+                          onClick={runRsTrendScan}
+                          disabled={isRunning}
+                          className="px-4 py-2 bg-[#00ad6f] hover:bg-emerald-500 disabled:bg-zinc-800 rounded-xl font-bold text-xs text-white transition-all shadow-md shadow-emerald-600/20 active:scale-95 flex items-center justify-center gap-1.5 self-start sm:self-auto"
+                        >
+                          {isRunning ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                          Run RS Trend Scan
+                        </button>
                       </div>
-
-                      {/* Daily Change */}
-                      <div className="bg-zinc-900/30 border border-zinc-800 p-4 rounded-2xl flex flex-col items-center justify-between gap-3">
-                        <div className="flex items-center gap-3 w-full">
-                          <div className="p-2 bg-amber-500/10 rounded-lg">
-                            <Activity className="w-4 h-4 text-amber-400" />
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex justify-between items-center">
-                              <h4 className="text-xs font-bold text-white uppercase tracking-wider">Daily Change Range</h4>
-                              <div className="bg-amber-500/20 px-2 py-0.5 rounded text-[10px] font-bold text-amber-400">
-                                {dailyChangeMin}% to {dailyChangeMax}%
-                              </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Price Position */}
+                        <div className="bg-zinc-900/35 border border-zinc-805 p-4 rounded-xl flex flex-col items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 w-full">
+                            <div className="p-2 bg-emerald-500/10 rounded-lg">
+                              <BarChart3 className="w-4 h-4 text-emerald-400" />
                             </div>
-                            <p className="text-[9px] text-zinc-500">Filter: min/max daily % change</p>
+                            <div className="flex-1">
+                              <div className="flex justify-between items-center">
+                                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Price Position</h4>
+                                <div className="bg-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold text-emerald-400">{positionFilter}%</div>
+                              </div>
+                              <p className="text-[9px] text-zinc-500">Filter: Above % of range</p>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex gap-4 w-full">
                           <input 
-                            type="number" 
-                            value={dailyChangeMin}
-                            onChange={(e) => setDailyChangeMin(Number(e.target.value))}
-                            className="w-1/2 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 font-mono"
+                            type="range" 
+                            min="0" 
+                            max="100" 
+                            value={positionFilter}
+                            onChange={(e) => setPositionFilter(Number(e.target.value))}
+                            className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
                           />
+                        </div>
+
+                        {/* Volume Filter */}
+                        <div className="bg-zinc-900/35 border border-zinc-805 p-4 rounded-xl flex flex-col items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 w-full">
+                            <div className="p-2 bg-emerald-500/10 rounded-lg">
+                              <Activity className="w-4 h-4 text-[#00ad6f]" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex justify-between items-center">
+                                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Volume Filter</h4>
+                                <div className="bg-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold text-[#00ad6f]">{volumeFilter}x</div>
+                              </div>
+                              <p className="text-[9px] text-zinc-500">Filter: Above avg volume</p>
+                            </div>
+                          </div>
                           <input 
-                            type="number" 
-                            value={dailyChangeMax}
-                            onChange={(e) => setDailyChangeMax(Number(e.target.value))}
-                            className="w-1/2 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-300 font-mono"
+                            type="range" 
+                            min="0" 
+                            max="10" 
+                            step="0.5"
+                            value={volumeFilter}
+                            onChange={(e) => setVolumeFilter(Number(e.target.value))}
+                            className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
                           />
                         </div>
                       </div>
                     </div>
-                  )}
-                </>
-              )}
 
-                  {/* Summary Header */}
-                  {results && (() => {
-                    const activeResults = activeTab === 'darvas' ? results.darvas : activeTab === 'rsTrend' ? results.rsTrend : results.custom;
-                    return (
-                      <div className="grid grid-cols-3 gap-6">
-                        <SummaryMetric 
-                          label="Scan Scope" 
-                          value={activeResults?.candidates?.length || 0} 
-                          sub="Assets" 
-                          onClick={() => setActiveDetail('scope')}
-                        />
-                        <SummaryMetric 
-                          label="Valid Signals" 
-                          value={activeResults?.signals?.length || 0} 
-                          sub="Opportunities" 
-                          onClick={() => setActiveDetail('signals')}
-                        />
-                        <SummaryMetric 
-                          label="Executions" 
-                          value={activeResults?.executedTrades?.length || 0} 
-                          sub="Orders" 
-                        />
-                      </div>
-                    );
-                  })()}
-
-                  {/* Executed Trades */}
-                  {(results && (activeTab === 'darvas' ? results.darvas.executedTrades : activeTab === 'rsTrend' ? results.rsTrend.executedTrades : results.custom.executedTrades)?.length > 0) && (
-                    <section>
-                      <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-400 mb-4 px-1">Recent Executions</h3>
-                      <div className="space-y-3">
-                        {(() => {
-                           const activeResults = activeTab === 'darvas' ? results.darvas : activeTab === 'rsTrend' ? results.rsTrend : results.custom;
-                           return activeResults?.executedTrades?.map((trade: any, i: number) => (
-                              <TradeCard key={i} trade={trade} />
-                           ));
-                        })()}
-                      </div>
-                    </section>
-                  )}
-
-                  {/* Scanner Results */}
-                  {results && (
-                    <section>
-                      <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-400 mb-4 px-1">Candidate Pipeline</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {(() => {
-                            const activeResults = activeTab === 'darvas' ? results.darvas : activeTab === 'rsTrend' ? results.rsTrend : results.custom;
-                            return activeResults?.candidates
-                              ?.filter((c: any) => {
-                                const pos = ((c.currentPrice - c.boxLow) / (c.boxHigh - c.boxLow)) * 100;
-                                return pos >= positionFilter && c.volumeRatio >= volumeFilter;
-                              })
-                              .map((c: any, i: number) => (
-                               <CandidateCard key={i} candidate={c} live={liveMetrics[c.symbol]} onClick={() => onCompanyClick(c.symbol)} />
-                              ))
-                          })()}
+                    {results?.rsTrend ? (
+                      <>
+                        <div className="grid grid-cols-3 gap-6">
+                          <SummaryMetric 
+                            label="Scan Scope" 
+                            value={results.rsTrend.candidates?.length || 0} 
+                            sub="Assets" 
+                            onClick={() => setActiveDetail('scope')}
+                          />
+                          <SummaryMetric 
+                            label="Valid Signals" 
+                            value={results.rsTrend.signals?.length || 0} 
+                            sub="Opportunities" 
+                            onClick={() => setActiveDetail('signals')}
+                          />
+                          <SummaryMetric 
+                            label="Executions" 
+                            value={results.rsTrend.executedTrades?.length || 0} 
+                            sub="Orders" 
+                          />
                         </div>
-                    </section>
-                  )}
-                </motion.div>
-              )}
+
+                        <section>
+                          <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-4 px-1">Candidate Pipeline (RS Trend)</h3>
+                          {results.rsTrend.candidates?.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {results.rsTrend.candidates
+                                ?.filter((c: any) => {
+                                  const pos = ((c.currentPrice - c.boxLow) / (c.boxHigh - c.boxLow)) * 100;
+                                  return pos >= positionFilter && c.volumeRatio >= volumeFilter;
+                                })
+                                .map((c: any, i: number) => (
+                                  <CandidateCard key={i} candidate={c} live={liveMetrics[c.symbol]} onClick={() => onCompanyClick(c.symbol)} />
+                                ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-zinc-500 italic">No assets qualified for RS Trend.</div>
+                          )}
+                        </section>
+                      </>
+                    ) : (
+                      <div className="bg-[#0f0f12]/30 border-2 border-dashed border-zinc-800 rounded-3xl p-16 text-center text-zinc-500">
+                        <h4 className="text-sm font-bold text-zinc-400 mb-1">RS Trend Idle</h4>
+                        <p className="text-xs max-w-xs mx-auto mb-4 text-zinc-600">Run the comparative RS Trend index scanner above to calculate asset values.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 3. Custom Slicers Tab */}
+                {activeTab === 'custom' && (
+                  <div className="space-y-6">
+                    <div className="bg-[#0f0f12] p-6 rounded-2xl border border-zinc-800/80 space-y-4 shadow-sm">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/60 pb-4 gap-3">
+                        <div>
+                          <h3 className="text-sm font-bold text-white uppercase tracking-wider">Custom Filter Momentum Scan</h3>
+                          <p className="text-[10px] text-zinc-500">Fine-tune range bounds off historical 90-day highs and daily percentage limits.</p>
+                        </div>
+                        <button
+                          onClick={runCustomFilterScan}
+                          disabled={isRunning}
+                          className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-800 rounded-xl font-bold text-xs text-white transition-all shadow-md shadow-purple-600/20 active:scale-95 flex items-center justify-center gap-1.5 self-start sm:self-auto"
+                        >
+                          {isRunning ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                          Run Custom Scan
+                        </button>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Dist From High */}
+                        <div className="bg-zinc-900/35 border border-zinc-805 p-4 rounded-xl flex flex-col items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 w-full">
+                            <div className="p-2 bg-purple-500/10 rounded-lg">
+                              <TrendingUp className="w-4 h-4 text-purple-400" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex justify-between items-center">
+                                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Dist From 90D High</h4>
+                                <div className="bg-purple-500/20 px-2 py-0.5 rounded text-[10px] font-bold text-purple-400">{maxDistFromHigh}%</div>
+                              </div>
+                              <p className="text-[9px] text-zinc-500">Filter: Max % off high</p>
+                            </div>
+                          </div>
+                          <input 
+                            type="range" 
+                            min="0" 
+                            max="100" 
+                            value={maxDistFromHigh}
+                            onChange={(e) => setMaxDistFromHigh(Number(e.target.value))}
+                            className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                          />
+                        </div>
+
+                        {/* Daily Change */}
+                        <div className="bg-zinc-900/35 border border-zinc-805 p-4 rounded-xl flex flex-col items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 w-full">
+                            <div className="p-2 bg-amber-500/10 rounded-lg">
+                              <Activity className="w-4 h-4 text-amber-400" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex justify-between items-center">
+                                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Daily Change Range</h4>
+                                <div className="bg-amber-500/20 px-2 py-0.5 rounded text-[10px] font-bold text-amber-400">{dailyChangeMin}% to {dailyChangeMax}%</div>
+                              </div>
+                              <p className="text-[9px] text-zinc-500">Filter: min/max daily % change</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-4 w-full pt-1">
+                            <input 
+                              type="number" 
+                              value={dailyChangeMin}
+                              onChange={(e) => setDailyChangeMin(Number(e.target.value))}
+                              className="w-1/2 bg-zinc-800 border border-zinc-700 rounded px-2.5 py-1 text-xs text-zinc-300 font-mono text-center"
+                            />
+                            <input 
+                              type="number" 
+                              value={dailyChangeMax}
+                              onChange={(e) => setDailyChangeMax(Number(e.target.value))}
+                              className="w-1/2 bg-zinc-800 border border-zinc-700 rounded px-2.5 py-1 text-xs text-zinc-300 font-mono text-center"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {results?.custom ? (
+                      <>
+                        <div className="grid grid-cols-3 gap-6">
+                          <SummaryMetric 
+                            label="Scan Scope" 
+                            value={results.custom.candidates?.length || 0} 
+                            sub="Assets" 
+                            onClick={() => setActiveDetail('scope')}
+                          />
+                          <SummaryMetric 
+                            label="Valid Signals" 
+                            value={results.custom.signals?.length || 0} 
+                            sub="Opportunities" 
+                            onClick={() => setActiveDetail('signals')}
+                          />
+                          <SummaryMetric 
+                            label="Executions" 
+                            value={results.custom.executedTrades?.length || 0} 
+                            sub="Orders" 
+                          />
+                        </div>
+
+                        <section>
+                          <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-4 px-1">Candidate Pipeline (Custom Filter)</h3>
+                          {results.custom.candidates?.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {results.custom.candidates
+                                ?.filter((c: any) => {
+                                  const pos = ((c.currentPrice - c.boxLow) / (c.boxHigh - c.boxLow)) * 100;
+                                  return pos >= positionFilter && c.volumeRatio >= volumeFilter;
+                                })
+                                .map((c: any, i: number) => (
+                                  <CandidateCard key={i} candidate={c} live={liveMetrics[c.symbol]} onClick={() => onCompanyClick(c.symbol)} />
+                                ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-zinc-500 italic">No assets qualified for Custom Filter.</div>
+                          )}
+                        </section>
+                      </>
+                    ) : (
+                      <div className="bg-[#0f0f12]/30 border-2 border-dashed border-zinc-800 rounded-3xl p-16 text-center text-zinc-500">
+                        <h4 className="text-sm font-bold text-zinc-400 mb-1">Custom Slicing Idle</h4>
+                        <p className="text-xs max-w-xs mx-auto mb-4 text-zinc-600">Apply the fine-tuning sliders and trigger the custom momentum agent above.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 4. Volume Spike Tab */}
+                {activeTab === 'spike' && (
+                  <div className="space-y-6">
+                    <div className="bg-[#0f0f12] p-6 rounded-2xl border border-zinc-800/80 space-y-4 shadow-sm">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/60 pb-4 gap-3">
+                        <div>
+                          <h3 className="text-sm font-bold text-white uppercase tracking-wider">Volume Spike Detection Agent</h3>
+                          <p className="text-[10px] text-zinc-500">Detects real-time anomalous volume surges on Indian assets in reference to baseline averages.</p>
+                        </div>
+                        <button
+                          onClick={runVolumeSpikeScan}
+                          disabled={isRunning}
+                          className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-800 rounded-xl font-bold text-xs text-white transition-all shadow-md shadow-amber-600/20 active:scale-95 flex items-center justify-center gap-1.5 self-start sm:self-auto"
+                        >
+                          {isRunning ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                          Run Volume Spike Scan
+                        </button>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 gap-4">
+                        <div className="bg-zinc-900/35 border border-zinc-805 p-4 rounded-xl flex flex-col items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 w-full">
+                            <div className="p-2 bg-amber-500/10 rounded-lg">
+                              <Zap className="w-4 h-4 text-amber-400" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex justify-between items-center">
+                                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Spike Multiplier Factor</h4>
+                                <div className="bg-amber-500/20 px-2 py-0.5 rounded text-[10px] font-bold text-amber-500">{spikeFactor}x</div>
+                              </div>
+                              <p className="text-[9px] text-zinc-500">Filter: Candidates must exceed normal 5m rolling average volumes by factor ratio.</p>
+                            </div>
+                          </div>
+                          <input 
+                            type="range" 
+                            min="2" 
+                            max="10" 
+                            step="1"
+                            value={spikeFactor}
+                            onChange={(e) => setSpikeFactor(Number(e.target.value))}
+                            className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {results?.spikes ? (
+                      <section>
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-4 px-1">Detected Volume Spikes</h3>
+                        {results.spikes.length > 0 ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {results.spikes.map((spike: any, i: number) => (
+                              <VolumeSpikeCard 
+                                key={i} 
+                                symbol={spike.symbol} 
+                                time={spike.time} 
+                                priceChangePercent={spike.priceChangePercent} 
+                                todayLow={spike.todayLow} 
+                                todayHigh={spike.todayHigh} 
+                                currentPrice={spike.currentPrice} 
+                                ratio={spike.ratio} 
+                                avgVolume5m={spike.avgVolume5m} 
+                                spikeVolume={spike.spikeVolume} 
+                              />
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-12 text-zinc-500 italic bg-zinc-950/20 border border-zinc-800/50 rounded-2xl">
+                            No anomalous volume spikes detected above the custom {spikeFactor}x baseline factor.
+                          </div>
+                        )}
+                      </section>
+                    ) : (
+                      <div className="bg-[#0f0f12]/30 border-2 border-dashed border-zinc-800 rounded-3xl p-16 text-center text-zinc-500">
+                        <h4 className="text-sm font-bold text-zinc-400 mb-1">Volume Spike Idle</h4>
+                        <p className="text-xs max-w-xs mx-auto mb-4 text-zinc-600">Activate the Volume Spike detector above to evaluate and fetch trade volume anomalies.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 5. Backtest Tab */}
+                {activeTab === 'backtest' && (
+                  <div className="space-y-6">
+                    <div className="bg-[#0f0f12] p-6 rounded-2xl border border-zinc-800/80 space-y-4 shadow-sm">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/60 pb-4 gap-3">
+                        <div>
+                          <h3 className="text-sm font-bold text-white uppercase tracking-wider">Benchmark Index Backtesters</h3>
+                          <p className="text-[10px] text-zinc-500">Evaluates candle breakouts & momentum simulation on NIFTY50, BANKNIFTY, and SENSEX indices.</p>
+                        </div>
+                        <button
+                          onClick={runBenchmarkBacktest}
+                          disabled={isRunning}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 rounded-xl font-bold text-xs text-white transition-all shadow-md shadow-blue-600/20 active:scale-95 flex items-center justify-center gap-1.5 self-start sm:self-auto"
+                        >
+                          {isRunning ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                          Run Simulator Backtests
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-zinc-500 leading-relaxed">
+                        Evaluates algorithmic entry rules and stop-losses against historical 5-minute candle data arrays. Outlier shadows are pruned.
+                      </p>
+                    </div>
+
+                    {results?.backtest ? (
+                      <div className="space-y-6">
+                        {results.backtest.map((res: any, idx: number) => (
+                          <div key={idx} className="bg-[#0f0f12] border border-zinc-805 rounded-2xl overflow-hidden shadow-sm">
+                            <div className="p-4 bg-zinc-900/50 border-b border-zinc-800 flex justify-between items-center flex-wrap gap-2">
+                              <span className="text-xs font-black text-white">{res.symbol === '^NSEI' ? 'NIFTY 50 (^NSEI)' : res.symbol === '^NSEBANK' ? 'BANK NIFTY (^NSEBANK)' : 'SENSEX (^BSESN)'}</span>
+                              <div className="flex gap-4 font-mono text-[11px]">
+                                <div>Win Rate: <span className="font-bold text-emerald-400">{res.winRate.toFixed(1)}%</span></div>
+                                <div>Trades: <span className="font-bold text-zinc-300">{res.totalTrades}</span></div>
+                                <div>PnL Index: <span className={`font-bold ${res.totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>{res.totalPnl >= 0 ? '+' : ''}{res.totalPnl.toFixed(1)}%</span></div>
+                              </div>
+                            </div>
+                            <div className="p-5">
+                              {res.trades?.length > 0 ? (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left border-collapse text-xs font-mono">
+                                    <thead>
+                                      <tr className="border-b border-zinc-800 text-zinc-500 uppercase text-[9px] tracking-wide">
+                                        <th className="pb-2">Type</th>
+                                        <th className="pb-2">Entry Time</th>
+                                        <th className="pb-2">Entry Price</th>
+                                        <th className="pb-2">Exit Details / Status</th>
+                                        <th className="pb-2 text-right">P&L</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-zinc-800/30 text-zinc-300">
+                                      {res.trades.slice(0, 10).map((t: any, idxTrade: number) => (
+                                        <tr key={idxTrade} className="hover:bg-zinc-900/30 transition-colors">
+                                          <td className="py-2">
+                                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${t.type === 'BUY' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-500'}`}>
+                                              {t.type}
+                                            </span>
+                                          </td>
+                                          <td className="py-2 text-zinc-400 text-[11px]">{t.entryTime}</td>
+                                          <td className="py-2">₹{t.entryPrice.toFixed(1)}</td>
+                                          <td className="py-2">
+                                            {t.status === 'TARGET' && <span className="text-emerald-400 font-bold">Target hit (₹{t.exitPrice?.toFixed(1)})</span>}
+                                            {t.status === 'SL' && <span className="text-red-400 font-bold">Stop-Loss (₹{t.exitPrice?.toFixed(1)})</span>}
+                                            {t.status === 'OPEN' && <span className="text-zinc-500">Trailing (₹{t.exitPrice?.toFixed(1)})</span>}
+                                          </td>
+                                          <td className={`py-2 text-right font-bold ${t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {t.pnl >= 0 ? '+' : ''}{t.pnl.toFixed(2)}%
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                  {res.trades.length > 10 && (
+                                    <div className="text-[10px] text-zinc-500 font-medium text-center pt-3 border-t border-zinc-800/40 mt-2">
+                                      ...Showing top 10 of {res.trades.length} simulated trades
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="text-center text-zinc-500 italic text-xs py-4">No simulated index pattern entries mapped.</div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="bg-[#0f0f12]/30 border-2 border-dashed border-zinc-800 rounded-3xl p-16 text-center text-zinc-500">
+                        <h4 className="text-sm font-bold text-zinc-400 mb-1">Index Simulator Idle</h4>
+                        <p className="text-xs max-w-xs mx-auto mb-4 text-zinc-600">Run the index benchmark backtests to evaluate pattern-matching breakouts on index data blocks.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </motion.div>
             </AnimatePresence>
           </div>
         </div>
