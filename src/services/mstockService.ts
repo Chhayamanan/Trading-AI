@@ -101,6 +101,41 @@ export class MstockService {
     return {};
   }
 
+  private static scripMasterData: any[] | null = null;
+
+  static async getSymbolToken(symbol: string, apiKey: string, sessionToken: string): Promise<string | null> {
+    if (!this.scripMasterData) {
+      console.log("[MSTOCK] Downloading live master scrip file from m.Stock...");
+      const url = "https://api.mstock.trade/openapi/typeb/instruments/OpenAPIScripMaster";
+      const response = await axios.get(url, {
+        headers: {
+            "X-Mirae-Version": "1",
+            "Authorization": `Bearer ${sessionToken}`,
+            "X-PrivateKey": apiKey
+        }
+      });
+      if (Array.isArray(response.data)) {
+        this.scripMasterData = response.data;
+      } else if (response.data?.data && Array.isArray(response.data.data)) {
+        this.scripMasterData = response.data.data;
+      } else {
+        throw new Error("Invalid scrip master data format");
+      }
+    }
+
+    const searchSymbols = [symbol.toUpperCase(), `${symbol.toUpperCase()}-EQ`];
+    for (const item of this.scripMasterData) {
+        const symCol = item.tradingSymbol !== undefined ? 'tradingSymbol' : 'symbol';
+        const exchCol = item.exchange !== undefined ? 'exchange' : 'exch_seg';
+        const tokCol = item.token !== undefined ? 'token' : 'symbolToken';
+        
+        if (item[exchCol]?.toUpperCase() === 'NSE' && searchSymbols.includes(item[symCol]?.toUpperCase())) {
+            return String(item[tokCol]);
+        }
+    }
+    return null;
+  }
+
   static async placeOrder(symbol: string, quantity: number = 1, price: number = 0) {
     const apiKey = process.env.MSTOCK_API_KEY;
     
@@ -115,6 +150,11 @@ export class MstockService {
       throw new Error("Mstock Auth Failed. Missing API Key or session is not active. Cannot trade.");
     }
     
+    const token = await this.getSymbolToken(symbol, apiKey!, sessionToken);
+    if (!token) {
+       throw new Error(`Symbol token not found for ${symbol}`);
+    }
+
     const orderUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular';
 
     // Simulate placing an order to m.Stock API Gateway
@@ -124,6 +164,7 @@ export class MstockService {
         txntype: "BUY",
         exchange: "NSE",
         tradingsymbol: `${symbol}-EQ`,
+        symboltoken: token,
         producttype: "DELIVERY",
         ordertype: price > 0 ? "LIMIT" : "MARKET",
         quantity: quantity.toString(),
