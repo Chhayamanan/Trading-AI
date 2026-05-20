@@ -52,7 +52,7 @@ export class MstockService {
       });
 
       if (response.data?.status === "success") {
-        const jwtToken = response.data?.data?.token || response.data?.access_token;
+        const jwtToken = response.data?.data?.access_token || response.data?.data?.token || response.data?.access_token;
         if (!jwtToken) {
            throw new Error("Login did not return an access token: " + JSON.stringify(response.data));
         }
