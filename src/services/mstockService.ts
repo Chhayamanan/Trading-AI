@@ -131,18 +131,17 @@ export class MstockService {
         validity: "DAY"
       };
 
-      const response = await axios.get(
-        orderUrl, 
-        {
-          headers: {
-            'X-Mirae-Version': '1',
-            'X-PrivateKey': apiKey,
-            'Authorization': `token ${apiKey}:${sessionToken}`,
-            'Content-Type': 'application/json'
-          },
-          data: orderPayload
-        }
-      );
+      const response = await axios({
+        method: 'GET',
+        url: orderUrl,
+        headers: {
+          'X-Mirae-Version': '1',
+          'X-PrivateKey': apiKey,
+          'Authorization': `Bearer ${sessionToken}`,
+          'Content-Type': 'application/json'
+        },
+        data: orderPayload
+      });
       
       if (response.data && response.data.status === 'success') {
           return response.data.orderId;
