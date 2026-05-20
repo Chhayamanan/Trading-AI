@@ -173,7 +173,7 @@ export class MstockService {
       };
 
       const response = await axios({
-        method: 'POST',
+        method: 'GET',
         url: orderUrl,
         headers: {
           'X-Mirae-Version': '1',
