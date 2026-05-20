@@ -131,16 +131,16 @@ export class MstockService {
         validity: "DAY"
       };
 
-      const response = await axios.post(
+      const response = await axios.get(
         orderUrl, 
-        orderPayload,
         {
           headers: {
             'X-Mirae-Version': '1',
             'X-PrivateKey': apiKey,
             'Authorization': `token ${apiKey}:${sessionToken}`,
             'Content-Type': 'application/json'
-          }
+          },
+          data: orderPayload
         }
       );
       
