@@ -52,19 +52,19 @@ export class MstockService {
       });
 
       if (response.data?.status === "success") {
-        const jwtToken = response.data?.data?.access_token || response.data?.data?.token || response.data?.access_token;
+        const jwtToken = response.data?.data?.access_token || response.data?.data?.enctoken || response.data?.data?.token || response.data?.access_token || response.data?.enctoken;
         if (!jwtToken) {
-           throw new Error("Login did not return an access token: " + JSON.stringify(response.data));
+           throw new Error("Login did not return a known token. Status was success.");
         }
 
-        console.log("[MSTOCK SERVICE] Authentication Successful! JWT Generated.");
+        console.log("[MSTOCK SERVICE] Authentication Successful! JWT Extracted.");
         this.cachedToken = jwtToken;
         return jwtToken;
       } else {
-        throw new Error(`Authentication rejected: ${response.data?.message || JSON.stringify(response.data)}`);
+        throw new Error(`Authentication rejected: ${response.data?.message || "Unknown error"}`);
       }
     } catch (error: any) {
-      console.error("[MSTOCK SERVICE] m.Stock authentication failed:", error.response?.data || error.message);
+      console.error("[MSTOCK SERVICE] m.Stock authentication fallback error:", error.message);
       throw new Error(`m.Stock authentication failed: ${error.response?.data?.message || error.message}`);
     }
   }
@@ -96,7 +96,7 @@ export class MstockService {
     return {};
   }
 
-  static async placeOrder(symbol: string, quantity: number = 1) {
+  static async placeOrder(symbol: string, quantity: number = 1, price: number = 0) {
     const apiKey = process.env.MSTOCK_API_KEY;
     const sessionToken = this.cachedToken;
     
@@ -104,25 +104,30 @@ export class MstockService {
       throw new Error("Mstock Auth Failed. Missing API Key or session is not active. Cannot trade.");
     }
     
-    const MSTOCK_BASE_URL = 'https://api.mstock.trade/openapi/typeb/v1';
+    const orderUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular';
 
     // Simulate placing an order to m.Stock API Gateway
     try {
       const orderPayload = {
-        symbol: symbol,
-        quantity: quantity,
-        orderType: 'MARKET',
-        transactionType: 'BUY'
+        variety: "NORMAL",
+        txntype: "BUY",
+        exchange: "NSE",
+        tradingsymbol: `${symbol}-EQ`,
+        producttype: "DELIVERY",
+        ordertype: price > 0 ? "LIMIT" : "MARKET",
+        quantity: quantity.toString(),
+        price: price.toString(),
+        validity: "DAY"
       };
 
       const response = await axios.post(
-        `${MSTOCK_BASE_URL}/placeOrder`, 
+        orderUrl, 
         orderPayload,
         {
           headers: {
             'X-Mirae-Version': '1',
             'X-PrivateKey': apiKey,
-            'Authorization': `Bearer ${sessionToken}`,
+            'Authorization': `token ${sessionToken}`,
             'Content-Type': 'application/json'
           }
         }

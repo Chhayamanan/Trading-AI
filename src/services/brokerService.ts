@@ -24,7 +24,7 @@ export class BrokerService {
     }
 
     console.log(`[BROKER] Requesting BUY ${symbol} @ ${entry} QTY: ${quantity}`);
-    const orderId = await MstockService.placeOrder(symbol, quantity);
+    const orderId = await MstockService.placeOrder(symbol, quantity, entry);
 
     if (orderId && !orderId.startsWith("FAILED") && !orderId.startsWith("ERROR")) {
       this.executedToday.add(symbol);
