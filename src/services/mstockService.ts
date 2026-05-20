@@ -103,7 +103,7 @@ export class MstockService {
 
   private static scripMasterData: any[] | null = null;
 
-  static async getSymbolToken(symbol: string, apiKey: string, sessionToken: string): Promise<string | null> {
+  static async getSymbolToken(symbol: string, apiKey: string, sessionToken: string): Promise<{token: string; tradingSymbol: string} | null> {
     if (!this.scripMasterData) {
       console.log("[MSTOCK] Downloading live master scrip file from m.Stock...");
       const url = "https://api.mstock.trade/openapi/typeb/instruments/OpenAPIScripMaster";
@@ -130,7 +130,10 @@ export class MstockService {
         const tokCol = item.token !== undefined ? 'token' : 'symbolToken';
         
         if (item[exchCol]?.toUpperCase() === 'NSE' && searchSymbols.includes(item[symCol]?.toUpperCase())) {
-            return String(item[tokCol]);
+            return {
+              token: String(item[tokCol]),
+              tradingSymbol: String(item[symCol])
+            };
         }
     }
     return null;
@@ -150,8 +153,8 @@ export class MstockService {
       throw new Error("Mstock Auth Failed. Missing API Key or session is not active. Cannot trade.");
     }
     
-    const token = await this.getSymbolToken(symbol, apiKey!, sessionToken);
-    if (!token) {
+    const symbolInfo = await this.getSymbolToken(symbol, apiKey!, sessionToken);
+    if (!symbolInfo) {
        throw new Error(`Symbol token not found for ${symbol}`);
     }
 
@@ -163,8 +166,8 @@ export class MstockService {
         variety: "NORMAL",
         txntype: "BUY",
         exchange: "NSE",
-        tradingsymbol: `${symbol}-EQ`,
-        symboltoken: token,
+        tradingsymbol: symbolInfo.tradingSymbol,
+        symboltoken: symbolInfo.token,
         producttype: "DELIVERY",
         ordertype: price > 0 ? "LIMIT" : "MARKET",
         quantity: quantity.toString(),
@@ -178,7 +181,7 @@ export class MstockService {
         headers: {
           'X-Mirae-Version': '1',
           'X-PrivateKey': apiKey,
-          'Authorization': `Bearer ${sessionToken}`,
+          'Authorization': `token ${apiKey}:${sessionToken}`,
           'Content-Type': 'application/json'
         },
         data: orderPayload
