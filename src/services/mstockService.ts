@@ -158,8 +158,7 @@ export class MstockService {
        throw new Error(`Symbol token not found for ${symbol}`);
     }
 
-    const primaryUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular';
-    const fallbackUrl = 'https://api.mstock.trade/openapi/typeb/orders';
+    const orderUrl = 'https://api.mstock.trade/openapi/typeb/orders/regular';
 
     const orderHeaders = {
       'X-Mirae-Version': '1',
@@ -182,54 +181,30 @@ export class MstockService {
         validity: "DAY"
       };
 
-      console.log(`[BROKER] Attempting order placement via POST to /orders/regular for ${symbol}...`);
+      console.log(`[BROKER] Submitting order query string for ${orderPayload.tradingsymbol}...`);
       
-      const response = await axios.post(
-        primaryUrl,
-        orderPayload,
-        { headers: orderHeaders }
-      );
+      const response = await axios({
+        method: 'GET',
+        url: orderUrl,
+        headers: orderHeaders,
+        params: orderPayload 
+      });
       
-      console.log("[SUCCESS] Order placed successfully! Response:", response.data);
+      console.log("[SUCCESS] Order Server Accepted Request:", response.data);
       if (response.data && response.data.status === 'success') {
           return response.data.orderId;
       } else {
           return response.data?.orderId || "MOCK_ORDER_ID_SUCCESS";
       }
     } catch (error: any) {
-      if (error.response && error.response.status === 405) {
-        console.log("[FALLBACK] /orders/regular returned 405. Routing to base /orders via POST...");
-        try {
-          const fallbackResponse = await axios.post(
-            fallbackUrl,
-            {
-              variety: "NORMAL",
-              txntype: "BUY",
-              exchange: "NSE",
-              tradingsymbol: symbolInfo.tradingSymbol,
-              symboltoken: symbolInfo.token,
-              producttype: "DELIVERY",
-              ordertype: price > 0 ? "LIMIT" : "MARKET",
-              quantity: quantity.toString(),
-              price: price.toString(),
-              validity: "DAY"
-            },
-            { headers: orderHeaders }
-          );
-          console.log("[SUCCESS VIA FALLBACK] Order placed! Response:", fallbackResponse.data);
-          
-          if (fallbackResponse.data && fallbackResponse.data.status === 'success') {
-              return fallbackResponse.data.orderId;
-          } else {
-              return fallbackResponse.data?.orderId || "MOCK_ORDER_ID_SUCCESS";
-          }
-        } catch (fallbackErr: any) {
-          console.error("[CRITICAL] Fallback route also failed:", fallbackErr.response?.data || fallbackErr.message);
-          throw new Error(`ERROR: ${fallbackErr.response?.data?.message || fallbackErr.message || "Unknown error placing order on Mstock fallback"}`);
-        }
+      console.error(`[ERROR] Order placement failed for ${symbolInfo.tradingSymbol}:`);
+      if (error.response) {
+          console.error(`Status Code: ${error.response.status}`);
+          console.error("Server Message:", error.response.data);
+          throw new Error(`ERROR: ${error.response?.data?.message || error.message || "Unknown error placing order on Mstock"}`);
       } else {
-        console.error("[ERROR] Order placement rejected:", error.response?.data || error.message);
-        throw new Error(`ERROR: ${error.response?.data?.message || error.message || "Unknown error placing order on Mstock"}`);
+          console.error("Network Error:", error.message);
+          throw new Error(`ERROR: ${error.message || "Unknown error placing order on Mstock"}`);
       }
     }
   }
