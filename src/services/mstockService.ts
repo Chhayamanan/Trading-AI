@@ -170,15 +170,21 @@ export class MstockService {
     try {
       const orderPayload = {
         variety: "NORMAL",
-        transactiontype: "BUY",
-        exchange: "NSE",
         tradingsymbol: symbolInfo.tradingSymbol,
         symboltoken: symbolInfo.token,
-        producttype: "DELIVERY",
+        exchange: "NSE",
+        transactiontype: "BUY",
         ordertype: price > 0 ? "LIMIT" : "MARKET",
         quantity: quantity.toString(),
+        producttype: "DELIVERY",
         price: price.toString(),
-        validity: "DAY"
+        triggerprice: "0",
+        squareoff: "0",
+        stoploss: "0",
+        trailingStopLoss: "",
+        disclosedquantity: "",
+        duration: "DAY",
+        ordertag: ""
       };
 
       console.log(`[BROKER] Submitting order payload for ${orderPayload.tradingsymbol}...`);
@@ -191,10 +197,10 @@ export class MstockService {
       });
       
       console.log("[SUCCESS] Order Server Accepted Request:", response.data);
-      if (response.data && response.data.status === 'success') {
-          return response.data.orderId;
+      if (response.data && (response.data.status === 'true' || response.data.status === true)) {
+          return response.data.data?.orderid;
       } else {
-          return response.data?.orderId || "MOCK_ORDER_ID_SUCCESS";
+          throw new Error(response.data?.message || "Order rejected by broker");
       }
     } catch (error: any) {
       console.error(`[ERROR] Order placement failed for ${symbolInfo.tradingSymbol}:`);
