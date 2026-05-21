@@ -34,7 +34,7 @@ export default function App() {
   const [spikeFactor, setSpikeFactor] = useState<number>(3);
   const [activeTab, setActiveTab] = useState<'darvas' | 'rsTrend' | 'custom' | 'spike' | 'backtest'>('darvas');
   const [activeScan, setActiveScan] = useState<'darvas' | 'all' | null>(null);
-  const [countdown, setCountdown] = useState<number>(60);
+  const [countdown, setCountdown] = useState<number>(5);
   const [portfolio, setPortfolio] = useState<any>(null);
   const [isPortfolioLoading, setIsPortfolioLoading] = useState<boolean>(false);
   const [isMonitoring, setIsMonitoring] = useState(false);
@@ -267,17 +267,17 @@ export default function App() {
     }
   };
 
-  // Effect 1: 1-minute Autoclose / Polling Countdown loop for Darvas Scanner
+  // Effect 1: 5-second Autoclose / Polling Countdown loop for Darvas Scanner
   React.useEffect(() => {
     let countdownInterval: NodeJS.Timeout;
     if (activeScan === 'darvas' && isMonitoring) {
-      addLog(`Live Darvas Monitoring established (Auto-scanning every 1 minute)`);
-      setCountdown(60);
+      addLog(`Live Darvas Monitoring established (Auto-scanning every 5 seconds)`);
+      setCountdown(5);
       countdownInterval = setInterval(() => {
         setCountdown(prev => {
           if (prev <= 1) {
             triggerDarvasMonitoringScan();
-            return 60;
+            return 5;
           }
           return prev - 1;
         });
@@ -314,7 +314,7 @@ export default function App() {
     setLogs([]);
     setActiveScan('darvas');
     setIsMonitoring(true);
-    setCountdown(60);
+    setCountdown(5);
     addLog("Initializing ISO-1: Darvas Box Scanning Engine...");
 
     try {
@@ -606,7 +606,7 @@ export default function App() {
             {isMonitoring && activeScan === 'darvas' && (
               <div className="flex items-center gap-2 px-3 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-400 font-mono text-xs font-bold shadow-md shadow-indigo-500/5">
                 <Clock className="w-3.5 h-3.5" />
-                <span>Auto-Scan: {Math.floor(countdown / 60)}m {countdown % 60}s</span>
+                <span>Auto-Scan: {countdown}s</span>
               </div>
             )}
 
@@ -872,7 +872,7 @@ export default function App() {
                           className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 rounded-xl font-bold text-xs text-white transition-all shadow-md shadow-indigo-600/20 active:scale-95 flex items-center justify-center gap-1.5 self-start sm:self-auto"
                         >
                           {isRunning && activeScan === 'darvas' ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                          Start Darvas Auto-Monitor (1m)
+                          Start Darvas Auto-Monitor (5s)
                         </button>
                       </div>
                       
