@@ -5,7 +5,7 @@ import { MstockService } from "../../services/mstockService";
 export interface VolumeSpike {
   symbol: string;
   spikeVolume: number;
-  avgVolume5m: number;
+  avgVolume: number;
   ratio: number;
   priceChangePercent: number;
   time: string;
@@ -46,14 +46,14 @@ export class VolumeSpikeScanner {
         const sorted = [...historicalVolumes].sort((a, b) => a - b);
         const trim = Math.floor(sorted.length * 0.1);
         const baselineVolumes = sorted.slice(trim, sorted.length - trim);
-        const avgVolume5m = baselineVolumes.length > 0 
+        const avgVolume = baselineVolumes.length > 0 
           ? baselineVolumes.reduce((a, b) => a + b, 0) / baselineVolumes.length
           : historicalVolumes.reduce((a, b) => a + b, 0) / historicalVolumes.length;
 
-        const ratio = spikeVolume / (avgVolume5m || 1);
+        const ratio = spikeVolume / (avgVolume || 1);
 
         if (ratio >= factor) {
-          // Calculate price change in this 5m window
+          // Calculate price change in this window
           const open = lastCandle.open || prevCandle.close || lastCandle.close;
           const close = lastCandle.close;
           const priceChangePercent = ((close - open) / (open || 1)) * 100;
@@ -81,7 +81,7 @@ export class VolumeSpikeScanner {
           spikes.push({
             symbol,
             spikeVolume,
-            avgVolume5m,
+            avgVolume,
             ratio,
             priceChangePercent,
             time: new Date(lastCandle.date).toLocaleTimeString(),

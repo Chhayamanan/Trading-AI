@@ -598,7 +598,7 @@ export default function App() {
               <Cpu className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-white">Institutional Trading AI</h1>
+              <h1 className="text-xl font-bold tracking-tight text-white">Institutional Trading AI <span className="text-xs text-indigo-400 bg-indigo-500/20 px-2 py-0.5 rounded-full ml-2">v2.0 (5s Fast-Scan)</span></h1>
               <p className="text-[10px] text-zinc-500 uppercase tracking-[0.2em] font-bold">Multi-Agent Operating System</p>
             </div>
           </div>
@@ -1322,7 +1322,7 @@ export default function App() {
                                 todayHigh={spike.todayHigh} 
                                 currentPrice={spike.currentPrice} 
                                 ratio={spike.ratio} 
-                                avgVolume5m={spike.avgVolume5m} 
+                                avgVolume={spike.avgVolume} 
                                 spikeVolume={spike.spikeVolume} 
                               />
                             ))}
@@ -1781,7 +1781,7 @@ function VolumeSpikeCard({ spike, onClick }: any) {
           />
         </div>
         <div className="flex justify-between text-[9px] text-zinc-600 font-medium">
-          <span>Avg 1m: {(spike.avgVolume5m / 1000).toFixed(0)}k</span>
+          <span>Avg 1m: {(spike.avgVolume / 1000).toFixed(0)}k</span>
           <span>Spike: {(spike.spikeVolume / 1000).toFixed(0)}k</span>
         </div>
       </div>
