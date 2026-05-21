@@ -198,7 +198,7 @@ export class MstockService {
         squareoff: "0",               // ← was missing
         stoploss: "0",                // ← was missing
         trailingStopLoss: "",         // ← was missing
-        disclosedquantity: "",        // ← was missing
+        disclosedquantity: "0",        // ← was missing
         duration: "DAY",              // ← was validity
         ordertag: ""                  // ← was missing
       };
