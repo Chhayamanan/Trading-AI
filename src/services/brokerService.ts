@@ -64,11 +64,14 @@ export class BrokerService {
     }
 
     console.log(`[BROKER] Requesting BUY ${symbol} @ ${entry} QTY: ${quantity}`);
-    const orderId = await MstockService.placeOrder(symbol, quantity, entry);
+    const orderId = await MstockService.placeOrder(symbol, quantity, entry).catch(e => e.message);
 
-    if (orderId && typeof orderId === 'string' && !orderId.startsWith("FAILED") && !orderId.startsWith("ERROR")) {
-      this.executedToday.add(symbol);
-      this.saveCache();
+    // Add to executed cache ANYWAY to prevent spamming the broker with the same failed order every minute
+    this.executedToday.add(symbol);
+    this.saveCache();
+
+    if (orderId && typeof orderId === 'string' && !orderId.startsWith("FAILED") && !orderId.startsWith("ERROR") && !orderId.includes("Failed")) {
+      console.log(`[BROKER] Trade successful for ${symbol}: ${orderId}`);
     } else {
       console.log(`[BROKER] Trade failed for ${symbol}: ${orderId}`);
       throw new Error(`Broker API: ${orderId}`);
