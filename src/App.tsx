@@ -34,7 +34,7 @@ export default function App() {
   const [spikeFactor, setSpikeFactor] = useState<number>(3);
   const [activeTab, setActiveTab] = useState<'darvas' | 'rsTrend' | 'custom' | 'spike' | 'backtest'>('darvas');
   const [activeScan, setActiveScan] = useState<'darvas' | 'all' | null>(null);
-  const [countdown, setCountdown] = useState<number>(5);
+  const [countdown, setCountdown] = useState<number>(20);
   const [portfolio, setPortfolio] = useState<any>(null);
   const [isPortfolioLoading, setIsPortfolioLoading] = useState<boolean>(false);
   const [isMonitoring, setIsMonitoring] = useState(false);
@@ -267,17 +267,17 @@ export default function App() {
     }
   };
 
-  // Effect 1: 5-second Autoclose / Polling Countdown loop for Darvas Scanner
+  // Effect 1: 20-second Autoclose / Polling Countdown loop for Darvas Scanner
   React.useEffect(() => {
     let countdownInterval: NodeJS.Timeout;
     if (activeScan === 'darvas' && isMonitoring) {
-      addLog(`Live Darvas Monitoring established (Auto-scanning every 5 seconds)`);
-      setCountdown(5);
+      addLog(`Live Darvas Monitoring established (Auto-scanning every 20 seconds)`);
+      setCountdown(20);
       countdownInterval = setInterval(() => {
         setCountdown(prev => {
           if (prev <= 1) {
             triggerDarvasMonitoringScan();
-            return 5;
+            return 20;
           }
           return prev - 1;
         });
@@ -314,7 +314,7 @@ export default function App() {
     setLogs([]);
     setActiveScan('darvas');
     setIsMonitoring(true);
-    setCountdown(5);
+    setCountdown(20);
     addLog("Initializing ISO-1: Darvas Box Scanning Engine...");
 
     try {
@@ -598,7 +598,7 @@ export default function App() {
               <Cpu className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-white">Institutional Trading AI <span className="text-xs text-indigo-400 bg-indigo-500/20 px-2 py-0.5 rounded-full ml-2">v2.0 (5s Fast-Scan)</span></h1>
+              <h1 className="text-xl font-bold tracking-tight text-white">Institutional Trading AI <span className="text-xs text-indigo-400 bg-indigo-500/20 px-2 py-0.5 rounded-full ml-2">v2.0 (20s Fast-Scan)</span></h1>
               <p className="text-[10px] text-zinc-500 uppercase tracking-[0.2em] font-bold">Multi-Agent Operating System</p>
             </div>
           </div>
@@ -746,7 +746,7 @@ export default function App() {
                       className="flex items-center gap-2 px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-md"
                     >
                       <div className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                      <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-tighter">Live Monitor Active (5s)</span>
+                      <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-tighter">Live Monitor Active (20s)</span>
                     </motion.div>
                   )}
                   {isRunning && <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />}
@@ -872,7 +872,7 @@ export default function App() {
                           className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 rounded-xl font-bold text-xs text-white transition-all shadow-md shadow-indigo-600/20 active:scale-95 flex items-center justify-center gap-1.5 self-start sm:self-auto"
                         >
                           {isRunning && activeScan === 'darvas' ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                          Start Darvas Auto-Monitor (5s)
+                          Start Darvas Auto-Monitor (20s)
                         </button>
                       </div>
                       
