@@ -192,7 +192,7 @@ export class MstockService {
         transactiontype: "BUY",       // ← was txntype
         ordertype: price > 0 ? "LIMIT" : "MARKET",
         quantity: quantity.toString(),
-        producttype: "DELIVERY",
+        producttype: "MTF",           // ← change from "DELIVERY"
         price: price > 0 ? price.toString() : "0",
         triggerprice: "0",            // ← was missing
         squareoff: "0",               // ← was missing
@@ -213,7 +213,7 @@ export class MstockService {
       });
 
       console.log("[SUCCESS] Order Server Accepted Request:", response.data);
-      if (response.data?.status === 'true') {          // ← was 'success'
+      if (response.data?.status === 'true' || response.data?.status === true || response.data?.status === 'success') {
         return response.data?.data?.orderid;           // ← was response.data.orderId
       } else {
         throw new Error(response.data?.message || "Order rejected by broker");

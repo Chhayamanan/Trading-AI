@@ -2,6 +2,11 @@ import { Trade } from "../models/trade";
 import { MstockService } from "./mstockService";
 
 export class BrokerService {
+  /**
+   * Same-day deduplication guard (Req 2).
+   * executedToday stores symbols bought in the current calendar day.
+   * It resets automatically when lastDate rolls over to a new day.
+   */
   private static executedToday: Set<string> = new Set();
   private static lastDate: string = new Date().toDateString();
 
