@@ -4,7 +4,7 @@ export const SETTINGS = {
   VOLUME_MULTIPLIER: 4,
   RISK_PER_TRADE: 1,
   CAPITAL: 10000000, // 1 Crore (10 Million Rs) preferred for institutional scale
-  ORDER_BUDGET: 10000,       // max spend per order in Rs
+  ORDER_BUDGET: 1000,       // max spend per order in Rs
   MTF_MARGIN_PERCENT: 50,    // broker margin % (50 % = 2x leverage)
   MAX_STOCK_PRICE: 10000,    // skip stocks above this price
   MAX_SECTOR_EXPOSURE: 20

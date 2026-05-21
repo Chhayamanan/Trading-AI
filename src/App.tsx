@@ -34,7 +34,7 @@ export default function App() {
   const [spikeFactor, setSpikeFactor] = useState<number>(3);
   const [activeTab, setActiveTab] = useState<'darvas' | 'rsTrend' | 'custom' | 'spike' | 'backtest'>('darvas');
   const [activeScan, setActiveScan] = useState<'darvas' | 'all' | null>(null);
-  const [countdown, setCountdown] = useState<number>(300);
+  const [countdown, setCountdown] = useState<number>(60);
   const [portfolio, setPortfolio] = useState<any>(null);
   const [isPortfolioLoading, setIsPortfolioLoading] = useState<boolean>(false);
   const [isMonitoring, setIsMonitoring] = useState(false);
@@ -267,17 +267,17 @@ export default function App() {
     }
   };
 
-  // Effect 1: 5-minute Autoclose / Polling Countdown loop for Darvas Scanner
+  // Effect 1: 1-minute Autoclose / Polling Countdown loop for Darvas Scanner
   React.useEffect(() => {
     let countdownInterval: NodeJS.Timeout;
     if (activeScan === 'darvas' && isMonitoring) {
-      addLog(`Live Darvas Monitoring established (Auto-scanning every 5 minutes)`);
-      setCountdown(300);
+      addLog(`Live Darvas Monitoring established (Auto-scanning every 1 minute)`);
+      setCountdown(60);
       countdownInterval = setInterval(() => {
         setCountdown(prev => {
           if (prev <= 1) {
             triggerDarvasMonitoringScan();
-            return 300;
+            return 60;
           }
           return prev - 1;
         });
@@ -314,7 +314,7 @@ export default function App() {
     setLogs([]);
     setActiveScan('darvas');
     setIsMonitoring(true);
-    setCountdown(300);
+    setCountdown(60);
     addLog("Initializing ISO-1: Darvas Box Scanning Engine...");
 
     try {
