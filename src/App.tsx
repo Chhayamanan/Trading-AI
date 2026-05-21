@@ -1291,7 +1291,7 @@ export default function App() {
                                 <h4 className="text-xs font-bold text-white uppercase tracking-wider">Spike Multiplier Factor</h4>
                                 <div className="bg-amber-500/20 px-2 py-0.5 rounded text-[10px] font-bold text-amber-500">{spikeFactor}x</div>
                               </div>
-                              <p className="text-[9px] text-zinc-500">Filter: Candidates must exceed normal 5m rolling average volumes by factor ratio.</p>
+                              <p className="text-[9px] text-zinc-500">Filter: Candidates must exceed normal 1m rolling average volumes by factor ratio.</p>
                             </div>
                           </div>
                           <input 
@@ -1361,7 +1361,7 @@ export default function App() {
                         </button>
                       </div>
                       <p className="text-[11px] text-zinc-500 leading-relaxed">
-                        Evaluates algorithmic entry rules and stop-losses against historical 5-minute candle data arrays. Outlier shadows are pruned.
+                        Evaluates algorithmic entry rules and stop-losses against historical 1-minute candle data arrays. Outlier shadows are pruned.
                       </p>
                     </div>
 
@@ -1753,7 +1753,7 @@ function VolumeSpikeCard({ spike, onClick }: any) {
           <div className={`text-lg font-bold ${spike.priceChangePercent >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
             {spike.priceChangePercent >= 0 ? '+' : ''}{spike.priceChangePercent.toFixed(2)}%
           </div>
-          <div className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">5m Window</div>
+          <div className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">1m Window</div>
         </div>
       </div>
 
@@ -1781,7 +1781,7 @@ function VolumeSpikeCard({ spike, onClick }: any) {
           />
         </div>
         <div className="flex justify-between text-[9px] text-zinc-600 font-medium">
-          <span>Avg 5m: {(spike.avgVolume5m / 1000).toFixed(0)}k</span>
+          <span>Avg 1m: {(spike.avgVolume5m / 1000).toFixed(0)}k</span>
           <span>Spike: {(spike.spikeVolume / 1000).toFixed(0)}k</span>
         </div>
       </div>

@@ -90,7 +90,7 @@ export class DataKeeper {
 
   private static async readCache(): Promise<CachedData | null> {
     const now = Date.now();
-    if (this.memoryCache && (now - this.lastCacheLoad < 300000)) return this.memoryCache;
+    if (this.memoryCache && (now - this.lastCacheLoad < 60000)) return this.memoryCache;
     try {
       const content = await fs.readFile(STORAGE_PATH, "utf-8");
       this.memoryCache = JSON.parse(content);
