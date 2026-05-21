@@ -3,6 +3,7 @@ import * as OTPAuth from 'otpauth';
 
 export class MstockService {
   private static cachedToken: string | null = null;
+  private static tokenExpiry: number = 0;
   private static MSTOCK_BASE_URL = "https://tradingapi.mstock.com/v1";
 
   static async autoLoginWithTOTP() {
@@ -51,14 +52,23 @@ export class MstockService {
         }
       });
 
-      if (response.data?.status === "success") {
-        const jwtToken = response.data?.data?.access_token || response.data?.data?.enctoken || response.data?.data?.token || response.data?.access_token || response.data?.enctoken;
+      console.log("[MSTOCK AUTH] Full response:", JSON.stringify(response.data));
+
+      if (response.data?.status === "true" || response.data?.status === "success" || response.data?.status === true) {
+        const jwtToken = response.data?.data?.jwtToken
+                       || response.data?.data?.access_token 
+                       || response.data?.data?.enctoken 
+                       || response.data?.data?.token
+                       || response.data?.jwtToken
+                       || response.data?.access_token 
+                       || response.data?.enctoken;
         if (!jwtToken) {
            throw new Error("Login did not return a known token. Status was success.");
         }
 
         console.log("[MSTOCK SERVICE] Authentication Successful! JWT Extracted.");
         this.cachedToken = jwtToken;
+        this.tokenExpiry = Date.now() + (6 * 60 * 60 * 1000);  // expire after 6 hours
         return jwtToken;
       } else {
         throw new Error(`Authentication rejected: ${response.data?.message || "Unknown error"}`);
@@ -70,10 +80,12 @@ export class MstockService {
   }
 
   static async getMstockJwtToken(): Promise<string> {
-    if (this.cachedToken) {
+    const now = Date.now();
+    if (this.cachedToken && now < this.tokenExpiry) {
       return this.cachedToken;
     }
-    console.log("[MSTOCK SERVICE] No cached token found in getMstockJwtToken, attempting to auto process...");
+    this.cachedToken = null;
+    console.log("[MSTOCK SERVICE] Token missing or expired, re-authenticating...");
     try {
         return await this.autoLoginWithTOTP();
     } catch (e: any) {
