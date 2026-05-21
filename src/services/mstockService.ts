@@ -85,6 +85,7 @@ export class MstockService {
       return this.cachedToken;
     }
     this.cachedToken = null;
+    this.scripMasterData = null;
     console.log("[MSTOCK SERVICE] Token missing or expired, re-authenticating...");
     try {
         return await this.autoLoginWithTOTP();
@@ -193,7 +194,7 @@ export class MstockService {
         ordertype: price > 0 ? "LIMIT" : "MARKET",
         quantity: quantity.toString(),
         producttype: "DELIVERY",
-        price: price.toString(),
+        price: price > 0 ? price.toString() : "0",
         triggerprice: "0",            // ← was missing
         squareoff: "0",               // ← was missing
         stoploss: "0",                // ← was missing
@@ -203,7 +204,7 @@ export class MstockService {
         ordertag: ""                  // ← was missing
       };
 
-      console.log(`[BROKER] Placing order for ${orderPayload.tradingsymbol}...`);
+      console.log(`[BROKER] Placing order — full payload: ${JSON.stringify(orderPayload)}`);
 
       const response = await axios({
         method: 'POST',               // ← was GET
