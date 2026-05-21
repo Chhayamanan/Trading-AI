@@ -113,31 +113,44 @@ export class MstockService {
     return {};
   }
 
-  private static tokenMap: Record<string, string> | null = null;
+  private static scripMasterData: any[] | null = null;
 
   static async getSymbolToken(symbol: string, apiKey: string, sessionToken: string): Promise<{token: string; tradingSymbol: string} | null> {
-    if (!this.tokenMap) {
-      try {
-        const fs = require('fs');
-        const path = require('path');
-        const tokenPath = path.join(process.cwd(), 'src', 'data', 'tokens.json');
-        this.tokenMap = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
-        console.log("[MSTOCK] Loaded local tokens.json with", Object.keys(this.tokenMap!).length, "tokens.");
-      } catch (e: any) {
-        console.error("Failed to load local tokens.json:", e.message);
-        return null;
+    if (!this.scripMasterData) {
+      console.log("[MSTOCK] Downloading live master scrip file from m.Stock...");
+      const url = "https://api.mstock.trade/openapi/typeb/instruments/OpenAPIScripMaster";
+      const response = await axios.get(url, {
+        headers: {
+            "X-Mirae-Version": "1",
+            "Authorization": `Bearer ${sessionToken}`,
+            "X-PrivateKey": apiKey
+        }
+      });
+      if (Array.isArray(response.data)) {
+        this.scripMasterData = response.data;
+      } else if (response.data?.data && Array.isArray(response.data.data)) {
+        this.scripMasterData = response.data.data;
+      } else {
+        throw new Error("Invalid scrip master data format");
       }
     }
 
-    const rawSymbol = symbol.toUpperCase();
-    const cleanSymbol = rawSymbol.endsWith('-EQ') ? rawSymbol.slice(0, -3) : rawSymbol;
-    const token = this.tokenMap![`${cleanSymbol}-EQ`] || this.tokenMap![cleanSymbol];
-
-    if (token) {
-        return {
-          token: token,
-          tradingSymbol: cleanSymbol
-        };
+    const searchSymbols = [symbol.toUpperCase(), `${symbol.toUpperCase()}-EQ`];
+    for (const item of this.scripMasterData) {
+        const symCol = item.tradingSymbol !== undefined ? 'tradingSymbol' : 'symbol';
+        const exchCol = item.exchange !== undefined ? 'exchange' : 'exch_seg';
+        const tokCol = item.token !== undefined ? 'token' : 'symbolToken';
+        
+        if (item[exchCol]?.toUpperCase() === 'NSE' && searchSymbols.includes(String(item[symCol]).toUpperCase())) {
+            const rawSymbol = String(item[symCol]);
+            const cleanSymbol = rawSymbol.toUpperCase().endsWith('-EQ')
+              ? rawSymbol.slice(0, -3)
+              : rawSymbol;
+            return {
+              token: String(item[tokCol]),
+              tradingSymbol: cleanSymbol
+            };
+        }
     }
     return null;
   }
