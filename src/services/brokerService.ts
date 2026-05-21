@@ -1,5 +1,7 @@
 import { Trade } from "../models/trade";
 import { MstockService } from "./mstockService";
+import * as fs from 'fs';
+import * as path from 'path';
 
 export class BrokerService {
   /**
@@ -9,6 +11,33 @@ export class BrokerService {
    */
   private static executedToday: Set<string> = new Set();
   private static lastDate: string = new Date().toDateString();
+  private static cacheFile = path.resolve(process.cwd(), 'executed_trades_cache.json');
+
+  private static loadCache() {
+    try {
+      if (fs.existsSync(this.cacheFile)) {
+        const data = fs.readFileSync(this.cacheFile, 'utf8');
+        const parsed = JSON.parse(data);
+        if (parsed.lastDate === this.lastDate && Array.isArray(parsed.executedToday)) {
+          this.executedToday = new Set(parsed.executedToday);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not load trades cache.", e);
+    }
+  }
+
+  private static saveCache() {
+    try {
+      const data = {
+        lastDate: this.lastDate,
+        executedToday: Array.from(this.executedToday)
+      };
+      fs.writeFileSync(this.cacheFile, JSON.stringify(data), 'utf8');
+    } catch (e) {
+      console.warn("Could not save trades cache.", e);
+    }
+  }
 
   static async executeBuy(
     symbol: string,
@@ -17,10 +46,16 @@ export class BrokerService {
   ): Promise<Trade | null> {
     const today = new Date().toDateString();
     
+    // Lazy load cache if it's empty
+    if (this.executedToday.size === 0) {
+      this.loadCache();
+    }
+    
     // Reset cache if it's a new day
     if (today !== this.lastDate) {
       this.executedToday.clear();
       this.lastDate = today;
+      this.saveCache();
     }
 
     if (this.executedToday.has(symbol)) {
@@ -33,6 +68,7 @@ export class BrokerService {
 
     if (orderId && typeof orderId === 'string' && !orderId.startsWith("FAILED") && !orderId.startsWith("ERROR")) {
       this.executedToday.add(symbol);
+      this.saveCache();
     } else {
       console.log(`[BROKER] Trade failed for ${symbol}: ${orderId}`);
       throw new Error(`Broker API: ${orderId}`);

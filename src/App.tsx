@@ -872,7 +872,7 @@ export default function App() {
                           className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 rounded-xl font-bold text-xs text-white transition-all shadow-md shadow-indigo-600/20 active:scale-95 flex items-center justify-center gap-1.5 self-start sm:self-auto"
                         >
                           {isRunning && activeScan === 'darvas' ? <Activity className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                          Start Darvas Auto-Monitor (5m)
+                          Start Darvas Auto-Monitor (1m)
                         </button>
                       </div>
                       
