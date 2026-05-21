@@ -207,7 +207,7 @@ export default function App() {
     }
   };
 
-  // Automated 5-minute Darvas Scanner callback
+  // Automated 1-minute Darvas Scanner callback
   const triggerDarvasMonitoringScan = async () => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
