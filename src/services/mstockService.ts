@@ -170,7 +170,7 @@ export class MstockService {
     try {
       const orderPayload = {
         variety: "NORMAL",
-        txntype: "BUY",
+        transactiontype: "BUY",
         exchange: "NSE",
         tradingsymbol: symbolInfo.tradingSymbol,
         symboltoken: symbolInfo.token,
