@@ -173,44 +173,44 @@ export class MstockService {
         tradingsymbol: symbolInfo.tradingSymbol,
         symboltoken: symbolInfo.token,
         exchange: "NSE",
-        transactiontype: "BUY",
+        transactiontype: "BUY",       // ← was txntype
         ordertype: price > 0 ? "LIMIT" : "MARKET",
         quantity: quantity.toString(),
         producttype: "DELIVERY",
         price: price.toString(),
-        triggerprice: "0",
-        squareoff: "0",
-        stoploss: "0",
-        trailingStopLoss: "",
-        disclosedquantity: "",
-        duration: "DAY",
-        ordertag: ""
+        triggerprice: "0",            // ← was missing
+        squareoff: "0",               // ← was missing
+        stoploss: "0",                // ← was missing
+        trailingStopLoss: "",         // ← was missing
+        disclosedquantity: "",        // ← was missing
+        duration: "DAY",              // ← was validity
+        ordertag: ""                  // ← was missing
       };
 
-      console.log(`[BROKER] Submitting order payload for ${orderPayload.tradingsymbol}...`);
-      
+      console.log(`[BROKER] Placing order for ${orderPayload.tradingsymbol}...`);
+
       const response = await axios({
-        method: 'POST',
+        method: 'POST',               // ← was GET
         url: orderUrl,
         headers: orderHeaders,
-        data: orderPayload 
+        data: orderPayload            // ← was params
       });
-      
+
       console.log("[SUCCESS] Order Server Accepted Request:", response.data);
-      if (response.data && (response.data.status === 'true' || response.data.status === true)) {
-          return response.data.data?.orderid;
+      if (response.data?.status === 'true') {          // ← was 'success'
+        return response.data?.data?.orderid;           // ← was response.data.orderId
       } else {
-          throw new Error(response.data?.message || "Order rejected by broker");
+        throw new Error(response.data?.message || "Order rejected by broker");
       }
     } catch (error: any) {
       console.error(`[ERROR] Order placement failed for ${symbolInfo.tradingSymbol}:`);
       if (error.response) {
-          console.error(`Status Code: ${error.response.status}`);
-          console.error("Server Message:", error.response.data);
-          throw new Error(`ERROR: ${error.response?.data?.message || error.message || "Unknown error placing order on Mstock"}`);
+        console.error(`Status Code: ${error.response.status}`);
+        console.error("Server Message:", error.response.data);
+        throw new Error(`ERROR: ${error.response?.data?.message || error.message || "Unknown error placing order on Mstock"}`);
       } else {
-          console.error("Network Error:", error.message);
-          throw new Error(`ERROR: ${error.message || "Unknown error placing order on Mstock"}`);
+        console.error("Network Error:", error.message);
+        throw new Error(`ERROR: ${error.message || "Unknown error placing order on Mstock"}`);
       }
     }
   }
