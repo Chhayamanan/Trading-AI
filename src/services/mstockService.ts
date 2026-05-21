@@ -136,20 +136,19 @@ export class MstockService {
       }
     }
 
-    const searchSymbols = [symbol.toUpperCase(), `${symbol.toUpperCase()}-EQ`];
     for (const item of this.scripMasterData) {
-        const symCol = item.tradingSymbol !== undefined ? 'tradingSymbol' : 'symbol';
-        const exchCol = item.exchange !== undefined ? 'exchange' : 'exch_seg';
-        const tokCol = item.token !== undefined ? 'token' : 'symbolToken';
-        
-        if (item[exchCol]?.toUpperCase() === 'NSE' && searchSymbols.includes(String(item[symCol]).toUpperCase())) {
-            const rawSymbol = String(item[symCol]);
-            const cleanSymbol = rawSymbol.toUpperCase().endsWith('-EQ')
-              ? rawSymbol.slice(0, -3)
-              : rawSymbol;
+        // mStock scrip master fields: token, symbol, name, exch_seg, instrumenttype
+        const exchSeg = (item.exch_seg || item.exchange || '').toUpperCase();
+        const plainSymbol = (item.symbol || '').toUpperCase();        // e.g. "RVNL"
+        const tradingName = (item.name || item.symbol || '').toUpperCase(); // e.g. "RVNL-EQ"
+        const instrType = (item.instrumenttype || '').toUpperCase();
+
+        // Match NSE equity only: exch_seg=NSE, instrumenttype=EQ, symbol=GRASIM
+        if (exchSeg === 'NSE' && instrType === 'EQ' && plainSymbol === symbol.toUpperCase()) {
+            console.log(`[MSTOCK] Found scrip: symbol=${item.symbol}, name=${item.name}, token=${item.token}`);
             return {
-              token: String(item[tokCol]),
-              tradingSymbol: cleanSymbol
+                token: String(item.token),
+                tradingSymbol: String(item.name)   // "GRASIM-EQ" — what order API expects
             };
         }
     }
