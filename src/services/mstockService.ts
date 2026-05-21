@@ -192,8 +192,8 @@ export class MstockService {
         transactiontype: "BUY",       // ← was txntype
         ordertype: price > 0 ? "LIMIT" : "MARKET",
         quantity: quantity.toString(),
-        producttype: "MTF",           // ← change from "DELIVERY"
-        price: price > 0 ? price.toString() : "0",
+        producttype: "MARGIN",           // ← change from "DELIVERY"
+        price: price > 0 ? (Math.round(price * 20) / 20).toFixed(2) : "0",
         triggerprice: "0",            // ← was missing
         squareoff: "0",               // ← was missing
         stoploss: "0",                // ← was missing
