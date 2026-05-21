@@ -181,13 +181,13 @@ export class MstockService {
         validity: "DAY"
       };
 
-      console.log(`[BROKER] Submitting order query string for ${orderPayload.tradingsymbol}...`);
+      console.log(`[BROKER] Submitting order payload for ${orderPayload.tradingsymbol}...`);
       
       const response = await axios({
-        method: 'GET',
+        method: 'POST',
         url: orderUrl,
         headers: orderHeaders,
-        params: orderPayload 
+        data: orderPayload 
       });
       
       console.log("[SUCCESS] Order Server Accepted Request:", response.data);
