@@ -50,14 +50,21 @@ export class DarvasScanner {
           continue;
         }
 
-        const highs = candles.map((c: any) => c.high || 0);
-        const lows = candles.map((c: any) => c.low || 0);
-        const volumes = candles.map((c: any) => c.volume || 0);
-        const closes = candles.map((c: any) => c.close || 0);
+        let historicalHigh = -Infinity;
+        let historicalLow = Infinity;
+        let sumVolume = 0;
+        
+        for (let i = 0; i < candles.length; i++) {
+          const c = candles[i];
+          if (c.high > historicalHigh) historicalHigh = c.high;
+          if (c.low < historicalLow) historicalLow = c.low;
+          sumVolume += c.volume || 0;
+        }
 
-        const historicalHigh = Math.max(...highs);
-        const historicalLow = Math.min(...lows);
-        const prevClose = closes[closes.length - 1]; // Last cached close
+        if (historicalHigh === -Infinity) historicalHigh = 0;
+        if (historicalLow === Infinity) historicalLow = 0;
+
+        const prevClose = candles[candles.length - 1].close || 0;
         
         // Use LIVE quote instead of last cached candle
         const live = liveQuotes[symbol];
@@ -67,7 +74,7 @@ export class DarvasScanner {
         const currentVolume = live.volume;
         const dailyChange = prevClose > 0 ? ((currentPrice - prevClose) / prevClose) * 100 : 0;
         const distFromHigh = historicalHigh > 0 ? Math.max(0, ((historicalHigh - currentPrice) / historicalHigh) * 100) : 0;
-        const avgVolume90d = volumes.reduce((a: number, b: number) => a + b, 0) / (volumes.length || 1);
+        const avgVolume90d = sumVolume / (candles.length || 1);
         const volumeRatio = currentVolume / (avgVolume90d || 1);
 
         // Step 1: Filters

@@ -80,7 +80,7 @@ export class YahooService {
     const map: Record<string, { price: number, volume: number }> = {};
     
     // Batch quotes to avoid Yahoo rate limits or blocking
-    const BATCH_SIZE = 50;
+    const BATCH_SIZE = 150;
     try {
       for (let i = 0; i < tickers.length; i += BATCH_SIZE) {
         const batchTickers = tickers.slice(i, i + BATCH_SIZE);
@@ -95,7 +95,7 @@ export class YahooService {
         });
         
         if (i + BATCH_SIZE < tickers.length) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 300));
         }
       }
       return map;

@@ -1314,16 +1314,8 @@ export default function App() {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {results.spikes.map((spike: any, i: number) => (
                               <VolumeSpikeCard 
-                                key={i} 
-                                symbol={spike.symbol} 
-                                time={spike.time} 
-                                priceChangePercent={spike.priceChangePercent} 
-                                todayLow={spike.todayLow} 
-                                todayHigh={spike.todayHigh} 
-                                currentPrice={spike.currentPrice} 
-                                ratio={spike.ratio} 
-                                avgVolume={spike.avgVolume} 
-                                spikeVolume={spike.spikeVolume} 
+                                key={i}
+                                spike={spike}
                               />
                             ))}
                           </div>
@@ -1745,44 +1737,44 @@ function VolumeSpikeCard({ spike, onClick }: any) {
             <h4 className="font-bold text-white group-hover/spike:text-amber-400 transition-colors uppercase tracking-tight text-lg">{spike.symbol}</h4>
             <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-2">
               <Clock className="w-3 h-3" />
-              Detected @ {spike.time}
+              Detected @ {spike.candleTime}
             </div>
           </div>
         </div>
         <div className="text-right">
           <div className={`text-lg font-bold ${spike.priceChangePercent >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {spike.priceChangePercent >= 0 ? '+' : ''}{spike.priceChangePercent.toFixed(2)}%
+            {spike.priceChangePercent >= 0 ? '+' : ''}{spike.priceChangePercent?.toFixed(2)}%
           </div>
-          <div className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">1m Window</div>
+          <div className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">5m Window</div>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-zinc-900/50 p-3 rounded-xl border border-zinc-800/50">
-          <div className="text-[9px] text-zinc-500 uppercase font-black tracking-widest mb-1">Today's Range</div>
-          <div className="text-xs font-mono font-bold text-zinc-300">₹{spike.todayLow.toFixed(0)} - ₹{spike.todayHigh.toFixed(0)}</div>
+          <div className="text-[9px] text-zinc-500 uppercase font-black tracking-widest mb-1">Status</div>
+          <div className="text-xs font-mono font-bold text-zinc-300">Spike Detected</div>
         </div>
         <div className="bg-zinc-900/50 p-3 rounded-xl border border-zinc-800/50 text-right">
           <div className="text-[9px] text-zinc-500 uppercase font-black tracking-widest mb-1">Current Price</div>
-          <div className="text-xs font-mono font-bold text-amber-400">₹{spike.currentPrice.toFixed(2)}</div>
+          <div className="text-xs font-mono font-bold text-amber-400">₹{spike.currentPrice?.toFixed(2)}</div>
         </div>
       </div>
 
       <div className="space-y-2">
         <div className="flex justify-between items-center text-[10px] uppercase font-bold tracking-tighter">
           <span className="text-zinc-500">Volume Intensity</span>
-          <span className="text-amber-400">{spike.ratio.toFixed(2)}x Baseline</span>
+          <span className="text-amber-400">{spike.volumeRatio?.toFixed(2)}x Baseline</span>
         </div>
         <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
           <motion.div 
             initial={{ width: 0 }}
-            animate={{ width: `${Math.min(100, (spike.ratio / 10) * 100)}%` }}
+            animate={{ width: `${Math.min(100, (spike.volumeRatio / 10) * 100)}%` }}
             className="h-full bg-amber-500" 
           />
         </div>
         <div className="flex justify-between text-[9px] text-zinc-600 font-medium">
-          <span>Avg 1m: {(spike.avgVolume / 1000).toFixed(0)}k</span>
-          <span>Spike: {(spike.spikeVolume / 1000).toFixed(0)}k</span>
+          <span>Avg 5m: {(spike.avg5MinVolume / 1000).toFixed(0)}k</span>
+          <span>Spike: {(spike.lastCandleVolume / 1000).toFixed(0)}k</span>
         </div>
       </div>
     </div>

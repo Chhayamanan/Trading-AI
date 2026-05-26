@@ -18,7 +18,7 @@ import { MstockService } from "./services/mstockService";
 import { CEOPA } from "./core/ceoPA";
 
 import { DataKeeper } from "./core/dataKeeper";
-import { VolumeSpikeScanner } from "./groups/darvas/volumeSpikeScanner";
+import { IntradayVolumeScanner } from "./groups/darvas/volumeSpikeScanner";
 import { BacktestScanner } from "./groups/backtest/scanner";
 
 async function startServer() {
@@ -271,7 +271,7 @@ async function startServer() {
     try {
       console.log(`===== STARTING VOLUME SPIKE SCAN (Scan 4) =====`);
       const factor = req.query.factor ? parseFloat(req.query.factor as string) : 3;
-      const spikes = await VolumeSpikeScanner.scan(RAW_UNIVERSE, factor);
+      const spikes = await IntradayVolumeScanner.scan(RAW_UNIVERSE, factor);
       
       res.json({
         success: true,
